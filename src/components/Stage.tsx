@@ -1,0 +1,284 @@
+// The main screen: background, player panel, lyrics, top bar and panels.
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEngineState, useLyrics, usePalette } from '../hooks/hooks';
+import { startLogin } from '../lib/auth';
+import type { Engine } from '../lib/engine';
+import { prefetchLyrics } from '../lib/lyrics';
+import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
+import { getSettings, updateSettings, useSettings } from '../lib/settings';
+import { friendlyError } from '../lib/spotify';
+import { visualTransitionMs } from '../lib/transitions';
+import type { Palette, StyleChoice } from '../lib/types';
+import { analyzeVibe } from '../lib/vibe';
+import { Background } from './Background';
+import { ExpandIcon, LyricsIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
+import { LyricsStage } from './LyricsStage';
+import { NowPlaying } from './NowPlaying';
+import { SearchPanel } from './SearchPanel';
+import { SettingsPanel } from './SettingsPanel';
+import { STYLES, styleName } from './styles';
+import { Dots } from './styles/Dots';
+import { toast, Toasts } from './Toasts';
+
+const STYLE_ORDER: StyleChoice[] = ['auto', ...STYLES.map((s) => s.id)];
+const run = (p: Promise<unknown>) => p.catch((e) => toast(friendlyError(e), 'error'));
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) void document.exitFullscreen();
+  else void document.documentElement.requestFullscreen?.().catch(() => {});
+}
+
+export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => void }) {
+  const state = useEngineState(engine);
+  const settings = useSettings();
+  const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
+  const [badge, setBadge] = useState<string | null>(null);
+  const track = state.track;
+
+  const { palette, ready } = usePalette(track?.artUrl);
+  const { lyrics } = useLyrics(track);
+  const vibe = useMemo(() => (track ? analyzeVibe(lyrics, palette) : null), [track, lyrics, palette]);
+
+  // The background switches only once the new cover's colors are ready.
+  const [scene, setScene] = useState<{ url: string | null; palette: Palette }>({ url: null, palette: FALLBACK_PALETTE });
+  useEffect(() => {
+    if (ready) setScene({ url: track?.artUrl ?? null, palette });
+  }, [ready, palette, track?.artUrl]);
+
+  const change = state.change;
+  const blendOn = settings.automixBlend || change.transition.kind !== 'blend';
+  const transitionMs = visualTransitionMs(
+    blendOn ? change.transition : { ...change.transition, kind: 'natural' },
+    settings.reduceMotion,
+  );
+
+  // Get the next song's lyrics and colors ready before it starts.
+  const next = state.nextTrack;
+  useEffect(() => {
+    if (!next) return;
+    prefetchLyrics(next);
+    void getPalette(next.artUrl);
+    if (next.artUrl) loadImage(next.artUrl).catch(() => {});
+  }, [next]);
+
+  // A little badge when an Automix / Crossfade blend is detected.
+  useEffect(() => {
+    const t = change.transition;
+    if (t.kind !== 'blend' || !settings.automixBlend) return;
+    setBadge(`Automix blend · ${(t.overlapMs / 1000).toFixed(1)}s`);
+    const id = setTimeout(() => setBadge(null), Math.max(2600, t.overlapMs));
+    return () => clearTimeout(id);
+  }, [change.seq]);
+
+  const cycleStyle = () => {
+    const cur = getSettings().style;
+    const nextStyle = STYLE_ORDER[(STYLE_ORDER.indexOf(cur) + 1) % STYLE_ORDER.length];
+    updateSettings({ style: nextStyle });
+    toast(`Style: ${styleName(nextStyle)}`);
+  };
+
+  // Keyboard shortcuts.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key.toLowerCase()) {
+        case ' ':
+          if (el.closest('button')) return;
+          e.preventDefault();
+          void run(engine.togglePlay());
+          break;
+        case 'n':
+          void run(engine.next());
+          break;
+        case 'p':
+          void run(engine.previous());
+          break;
+        case '/':
+          e.preventDefault();
+          setPanel('search');
+          break;
+        case 's':
+          setPanel((p) => (p === 'settings' ? null : 'settings'));
+          break;
+        case 'l':
+          updateSettings({ lyricsOnly: !getSettings().lyricsOnly });
+          break;
+        case 'f':
+          toggleFullscreen();
+          break;
+        case 'y':
+          cycleStyle();
+          break;
+        case '[':
+        case ']': {
+          const offsetMs = getSettings().offsetMs + (e.key === ']' ? 100 : -100);
+          updateSettings({ offsetMs });
+          toast(`Lyrics timing ${offsetMs > 0 ? '+' : ''}${(offsetMs / 1000).toFixed(1)}s`);
+          break;
+        }
+        case 'escape':
+          setPanel(null);
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [engine]);
+
+  const playHere = async () => {
+    try {
+      await engine.enableBrowserPlayer();
+      const id = engine.getState().browserPlayer.deviceId;
+      if (id) await engine.transferTo(id);
+      setPanel('search');
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+
+  const currentStyle = settings.style === 'auto' ? vibe?.autoStyle ?? 'apple' : settings.style;
+
+  let content;
+  if (!track && state.status === 'connecting') {
+    content = (
+      <div className="msg">
+        <Dots className="msg-dots is-loading" />
+        <div className="msg-title">Connecting to Spotify…</div>
+      </div>
+    );
+  } else if (!track) {
+    content = (
+      <div className="msg idle">
+        <div className="msg-title big">Nothing is playing</div>
+        <div className="msg-sub">Start a song in any Spotify app and it’ll show up here — or pick one now.</div>
+        <div className="msg-actions">
+          <button className="btn primary" onClick={() => setPanel('search')}>
+            <SearchIcon width={18} height={18} /> Search a song
+          </button>
+          {state.browserPlayer.status !== 'ready' && (
+            <button className="btn ghost" onClick={playHere}>
+              Play in this browser
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  } else if (state.status === 'ad') {
+    content = (
+      <div className="msg">
+        <div className="msg-title">Ad break</div>
+        <div className="msg-sub">Lyrics will be back after this.</div>
+      </div>
+    );
+  } else {
+    content = <LyricsStage engine={engine} change={change} settings={settings} onSeek={(ms) => void run(engine.seek(ms))} />;
+  }
+
+  const stageStyle = {
+    '--font-scale': settings.fontScale,
+    '--accent': palette.accent,
+    '--accent2': palette.accent2,
+    '--base': palette.base,
+  } as CSSProperties;
+
+  return (
+    <div
+      className={`stage current-${currentStyle}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
+        track ? '' : ' no-track'
+      }`}
+      style={stageStyle}
+    >
+      <Background
+        artUrl={scene.url}
+        palette={scene.palette}
+        mode={settings.background}
+        motion={vibe?.motion ?? 0.8}
+        transitionMs={transitionMs}
+        reduceMotion={settings.reduceMotion}
+        shade={0.14 + scene.palette.brightness * 0.42}
+      />
+
+      <div
+        className={`decor${currentStyle === 'neon' && track ? ' on' : ''}${settings.reduceMotion ? ' calm' : ''}`}
+        style={{ '--motion': (vibe?.motion ?? 1).toFixed(2) } as CSSProperties}
+        aria-hidden
+      >
+        {currentStyle === 'neon' && (
+          <>
+            <div className="ne-grid" />
+            <div className="ne-scan" />
+          </>
+        )}
+      </div>
+
+      <header className="topbar">
+        {engine.isDemo && <span className="pill hide-mobile">Demo · no sound</span>}
+        {state.problem && !state.authExpired && <span className="pill warn">{state.problem}</span>}
+        {settings.lyricsOnly && track && (
+          <span className="lo-caption">
+            {track.name} · {track.artists.join(', ')}
+          </span>
+        )}
+        <div className="spacer" />
+        <button className="icon-btn" onClick={() => setPanel(panel === 'search' ? null : 'search')} aria-label="Search" title="Search (/)">
+          <SearchIcon />
+        </button>
+        <button className="style-btn" onClick={cycleStyle} title="Next lyrics style (Y)">
+          <SparkleIcon width={16} height={16} />
+          <span>{settings.style === 'auto' ? `Auto · ${styleName(currentStyle)}` : styleName(settings.style)}</span>
+        </button>
+        <button
+          className={`icon-btn${settings.lyricsOnly ? ' on' : ''}`}
+          onClick={() => updateSettings({ lyricsOnly: !settings.lyricsOnly })}
+          aria-label="Lyrics only"
+          title="Lyrics only (L)"
+        >
+          <LyricsIcon />
+        </button>
+        <button className="icon-btn" onClick={() => setPanel(panel === 'settings' ? null : 'settings')} aria-label="Settings" title="Settings (S)">
+          <SettingsIcon />
+        </button>
+        <button className="icon-btn hide-mobile" onClick={toggleFullscreen} aria-label="Fullscreen" title="Fullscreen (F)">
+          <ExpandIcon />
+        </button>
+      </header>
+
+      {badge && (
+        <div className="badge" role="status">
+          <SparkleIcon width={14} height={14} /> {badge}
+        </div>
+      )}
+
+      <main className="stage-main">
+        {!settings.lyricsOnly && <NowPlaying engine={engine} state={state} />}
+        <div className="stage-lyrics">{content}</div>
+      </main>
+
+      {panel === 'search' && <SearchPanel engine={engine} onClose={() => setPanel(null)} />}
+      {panel === 'settings' && (
+        <SettingsPanel
+          settings={settings}
+          vibe={vibe}
+          typicalBlendMs={state.typicalBlendMs}
+          isDemo={engine.isDemo}
+          onClose={() => setPanel(null)}
+          onSignOut={onSignOut}
+        />
+      )}
+
+      {state.authExpired && (
+        <div className="overlay">
+          <div className="setup-card glass small">
+            <h2>Spotify login expired</h2>
+            <p className="tagline">Connect again to keep the lyrics going.</p>
+            <button className="btn primary wide" onClick={() => void startLogin()}>
+              Reconnect Spotify
+            </button>
+          </div>
+        </div>
+      )}
+      <Toasts />
+    </div>
+  );
+}
