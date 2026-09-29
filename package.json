@@ -1,0 +1,32 @@
+{
+  "name": "spotify-lyrics-stage",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Apple Music-style animated lyrics for whatever you play on Spotify, running on your own computer.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xbyxr9/spotifylyrics.git"
+  }
+}
