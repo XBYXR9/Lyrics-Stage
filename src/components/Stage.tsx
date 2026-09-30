@@ -181,7 +181,15 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
       </div>
     );
   } else {
-    content = <LyricsStage engine={engine} change={change} settings={settings} onSeek={(ms) => void run(engine.seek(ms))} />;
+    content = (
+      <LyricsStage
+        engine={engine}
+        change={change}
+        currentTrack={track}
+        settings={settings}
+        onSeek={(ms) => void run(engine.seek(ms))}
+      />
+    );
   }
 
   const stageStyle = {

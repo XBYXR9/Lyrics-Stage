@@ -82,6 +82,8 @@ Each bridge sends a *snapshot* (song, playing or paused, position, time taken) a
 (`src/lib/desktopEngine.ts`). The page runs the same Automix detection as the web version.
 
 Lyrics still come from [LRCLIB](https://lrclib.net), and the only other network requests are for fonts and album covers.
+If the Spotify app doesn't share a song's cover (it sometimes doesn't on Windows), the app looks it up by artist and
+title with Apple's free [iTunes Search API](https://performance-partners.apple.com/search-api) (`src/lib/cover.ts`).
 
 ## Developing the app
 

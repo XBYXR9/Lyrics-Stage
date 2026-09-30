@@ -7,6 +7,7 @@
 // system (AppleScript on macOS, media controls on Windows, MPRIS on Linux)
 // and sends snapshots here; see electron/bridge/.
 
+import { findCover, type CoverQuery } from './cover';
 import type { DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi } from './desktopTypes';
 import { BaseEngine, type DeviceInfo, type Engine, type SpotifyAppStatus } from './engine';
 import type { TrackInfo } from './types';
@@ -47,10 +48,15 @@ export class DesktopEngine extends BaseEngine implements Engine {
   private off: (() => void) | null = null;
   private api: LyricsStageDesktopApi;
   private waitTimer: ReturnType<typeof setTimeout> | undefined;
+  private findCover: (q: CoverQuery) => Promise<string | null>;
+  /** Covers we looked up ourselves, for songs the player gave no cover for. */
+  private foundCovers = new Map<string, string>();
+  private coverLookups = new Set<string>();
 
-  constructor(api: LyricsStageDesktopApi) {
+  constructor(api: LyricsStageDesktopApi, coverFinder: (q: CoverQuery) => Promise<string | null> = findCover) {
     super();
     this.api = api;
+    this.findCover = coverFinder;
   }
 
   start() {
@@ -91,6 +97,13 @@ export class DesktopEngine extends BaseEngine implements Engine {
       return;
     }
 
+    // Cover: the player's own picture wins. Without one, use one we looked up.
+    if (!track.artUrl) {
+      const found = this.foundCovers.get(track.key);
+      if (found) track.artUrl = track.artThumbUrl = found;
+      else this.lookUpCover(track);
+    }
+
     let positionMs = s.positionMs;
     if (positionMs === null) {
       // The Spotify app doesn't tell us the position (Linux), so count time
@@ -100,7 +113,27 @@ export class DesktopEngine extends BaseEngine implements Engine {
     }
     this.observe(track, positionMs, s.playing, measuredAt);
     const p = patch();
+    // Same song, but its cover showed up a moment later (Windows often sends
+    // the title first and the picture after): show it now.
+    const current = this.state.track;
+    if (current?.key === track.key && track.artUrl && current.artUrl !== track.artUrl) {
+      p.track = { ...current, artUrl: track.artUrl, artThumbUrl: track.artUrl };
+    }
     if (Object.keys(p).length) this.update(p);
+  }
+
+  /** Looks up a cover (once per song) when the player didn't provide one. */
+  private lookUpCover(track: TrackInfo) {
+    if (this.coverLookups.has(track.key)) return;
+    this.coverLookups.add(track.key);
+    void this.findCover({ name: track.name, artists: track.artists, album: track.album }).then((url) => {
+      if (!url) return;
+      this.foundCovers.set(track.key, url);
+      const current = this.state.track;
+      if (current?.key === track.key && !current.artUrl) {
+        this.update({ track: { ...current, artUrl: url, artThumbUrl: url } });
+      }
+    });
   }
 
   private async send(c: DesktopCommand) {
