@@ -5,6 +5,9 @@ import { Fragment, useRef, type CSSProperties } from 'react';
 import { Dots, paintDots } from './Dots';
 import { jitter, seekTarget, sungCount, useLyricTimeline, wordByWord, type StyleProps } from './shared';
 
+/** Words start popping in this much early, so they're readable (not still growing) when they're sung. */
+const POP_LEAD_MS = 90;
+
 export function KineticStyle(props: StyleProps) {
   const { lyrics, vibe, offsetMs, sweep, interactive, onSeek, reduceMotion } = props;
   const lines = lyrics.lines;
@@ -18,7 +21,7 @@ export function KineticStyle(props: StyleProps) {
     const el = lineEls.current.get(idx);
     if (!el) return;
     if (line.interlude) return paintDots(el.querySelector<HTMLElement>('.dots'), line, t);
-    const count = perWord ? sungCount(line, t) : line.words.length;
+    const count = perWord ? sungCount(line, t + POP_LEAD_MS) : line.words.length;
     const prev = state.current;
     if (prev.line === idx && prev.count === count) return;
     const grew = prev.line === idx && count > prev.count;

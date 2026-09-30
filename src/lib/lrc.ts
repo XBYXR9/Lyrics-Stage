@@ -55,11 +55,35 @@ export function splitWords(text: string): string[] {
   return text.match(/\S+\s*/g) ?? [];
 }
 
-/** Estimate how long a line is actually sung, given the gap until the next line. */
-export function estimateSingingMs(text: string, gapMs: number): number {
-  if (gapMs <= 5500) return Math.max(300, gapMs * 0.9);
-  const letters = text.match(LETTER_RE)?.length ?? 0;
-  return Math.min(gapMs * 0.88, Math.max(1500, letters * 90 + 400));
+const letterCount = (text: string) => text.match(LETTER_RE)?.length ?? 0;
+
+/** Singing pace (ms per letter) when a song gives us nothing to measure. */
+export const DEFAULT_PACE_MS = 95;
+
+/**
+ * How fast this song is sung, in ms per letter. Measured on lines that run
+ * straight into the next one (short gaps), where the gap is roughly the
+ * singing time: rap comes out around 50, ballads around 150.
+ */
+export function singingPace(lines: { text: string; gapMs: number }[]): number {
+  const samples = lines
+    .filter((l) => l.gapMs >= 800 && l.gapMs <= 6000 && letterCount(l.text) >= 4)
+    .map((l) => (l.gapMs * 0.9) / letterCount(l.text))
+    .sort((a, b) => a - b);
+  if (samples.length < 4) return DEFAULT_PACE_MS;
+  // Lines followed by a pause make the gap look slower than the singing, so lean towards the faster lines.
+  const pace = samples[Math.floor(samples.length * 0.35)];
+  return Math.min(200, Math.max(45, pace));
+}
+
+/**
+ * Estimate how long a line is actually sung, given the gap until the next
+ * line and the song's pace. A line is never sung longer than its gap, but a
+ * short line before a pause is sung quickly, not stretched over the pause.
+ */
+export function estimateSingingMs(text: string, gapMs: number, paceMs = DEFAULT_PACE_MS): number {
+  const natural = letterCount(text) * paceMs * 1.15 + 250;
+  return Math.max(Math.min(300, gapMs), Math.min(gapMs * 0.9, Math.max(600, natural)));
 }
 
 export function estimateWords(text: string, start: number, end: number): LyricWord[] {
@@ -96,6 +120,7 @@ export function buildSynced(raw: RawLine[], source: string, durationMs?: number)
   const hasRealWords = sorted.some((l) => l.words && l.words.length > 0);
   const lines: LyricLine[] = [];
   let id = 0;
+  const pace = singingPace(sorted.map((l, i) => ({ text: l.text, gapMs: (sorted[i + 1]?.start ?? Infinity) - l.start })));
 
   for (let i = 0; i < sorted.length; i++) {
     const cur = sorted[i];
@@ -118,7 +143,7 @@ export function buildSynced(raw: RawLine[], source: string, durationMs?: number)
           end: w.end ?? arr[j + 1]?.start ?? cur.end ?? Math.min(nextStart, w.start + 1500),
         }));
     } else {
-      const singEnd = cur.end && cur.end > cur.start ? cur.end : cur.start + estimateSingingMs(text, gap);
+      const singEnd = cur.end && cur.end > cur.start ? cur.end : cur.start + estimateSingingMs(text, gap, pace);
       words = estimateWords(text, cur.start, singEnd);
     }
     words = markBacking(words);
