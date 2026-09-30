@@ -1,5 +1,6 @@
 // Bundles the desktop app's main process and preload script (TypeScript → CommonJS).
 import { build } from 'esbuild';
+import { pathToFileURL } from 'node:url';
 
 export async function buildElectron({ watch = false } = {}) {
   const common = {
@@ -17,7 +18,9 @@ export async function buildElectron({ watch = false } = {}) {
   await build({ ...common, entryPoints: ['electron/preload.ts'], outfile: 'dist-electron/preload.cjs' });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run the build when this file is started directly (`node scripts/build-electron.mjs`).
+// pathToFileURL makes this work with Windows paths (D:\...) as well.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await buildElectron();
   console.log('Built dist-electron/');
 }
