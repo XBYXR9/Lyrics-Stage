@@ -107,6 +107,8 @@ while ($true) {
       $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
       if ($out.playing -and $updated -gt 0 -and $now -gt $updated) { $pos += ($now - $updated) }
       $out.positionMs = $pos
+      # When Spotify last updated the timeline (to spot one left over from the previous song).
+      $out.updatedAt = $updated
       $out.at = $now
       # Cover: Spotify often shares the new title first and the picture a
       # moment later (or briefly still shows the old one), so read it when the
@@ -140,13 +142,30 @@ while ($true) {
 }
 `;
 
+/** What the bridge remembers between lines from the PowerShell loop. */
+export interface WindowsState {
+  /** The cover is only sent when it changes, so keep the last one. */
+  art: string | null;
+  /** The song we saw last, and when it started showing. */
+  key: string | null;
+  changedAt: number;
+  /** True while Windows still shows the previous song's timeline for a new song. */
+  staleTimeline: boolean;
+}
+
+export const WINDOWS_START: WindowsState = { art: null, key: null, changedAt: 0, staleTimeline: false };
+
 /**
- * Turns one line from the PowerShell loop into a snapshot. The cover image is
- * only sent when the song changes, so the caller keeps the last one. Exported for tests.
+ * When the song changes, Spotify updates the title right away but can leave
+ * the previous song's timeline (position and length) in place for a while.
+ * A timeline last updated this long before the song changed is that leftover.
  */
-export function parseWindowsLine(raw: unknown, lastArt: string | null): { snapshot: DesktopSnapshot; art: string | null } {
+const STALE_TIMELINE_MS = 3000;
+
+/** Turns one line from the PowerShell loop into a snapshot. Exported for tests. */
+export function parseWindowsLine(raw: unknown, prev: WindowsState): { snapshot: DesktopSnapshot; state: WindowsState } {
   const o = (raw ?? {}) as Record<string, unknown>;
-  const art = o.artChanged ? (typeof o.art === 'string' ? o.art : null) : lastArt;
+  const art = o.artChanged ? (typeof o.art === 'string' ? o.art : null) : prev.art;
   const base: DesktopSnapshot = {
     source: 'smtc',
     running: false,
@@ -156,28 +175,41 @@ export function parseWindowsLine(raw: unknown, lastArt: string | null): { snapsh
     at: typeof o.at === 'number' ? o.at : Date.now(),
     canSeek: false,
   };
-  if (o.running !== true) return { snapshot: base, art };
+  if (o.running !== true) return { snapshot: base, state: { ...WINDOWS_START, art } };
   const title = typeof o.title === 'string' ? o.title : '';
-  const durationMs = Number(o.durationMs) || 0;
+  const artist = String(o.artist ?? '');
+  const album = String(o.album ?? '');
+  const playing = o.playing === true;
+  const key = title ? `${title}|${artist}|${album}` : null;
+  const updatedAt = typeof o.updatedAt === 'number' && o.updatedAt > 0 ? o.updatedAt : null;
+
+  let { changedAt, staleTimeline } = prev;
+  if (key !== prev.key) {
+    changedAt = base.at;
+    // Only for a change we saw happen: the first song we see may simply not have been touched in a while.
+    staleTimeline = prev.key !== null && key !== null && updatedAt !== null && updatedAt < changedAt - STALE_TIMELINE_MS;
+  } else if (staleTimeline && updatedAt !== null && updatedAt >= changedAt - STALE_TIMELINE_MS) {
+    staleTimeline = false; // Spotify caught up
+  }
+
+  let durationMs = Number(o.durationMs) || 0;
+  let positionMs =
+    typeof o.positionMs === 'number' ? Math.max(0, durationMs ? Math.min(o.positionMs, durationMs) : o.positionMs) : null;
+  if (staleTimeline) {
+    // Don't trust the old song's numbers: the length is unknown for now, and
+    // the new song has been playing for about as long as its title has shown.
+    durationMs = 0;
+    positionMs = playing ? Math.max(0, base.at - changedAt) : 0;
+  }
   return {
-    art,
+    state: { art, key, changedAt, staleTimeline },
     snapshot: {
       ...base,
       running: true,
-      playing: o.playing === true,
+      playing,
       canSeek: o.canSeek === true,
-      track: title
-        ? {
-            uri: null,
-            title,
-            artist: String(o.artist ?? ''),
-            album: String(o.album ?? ''),
-            durationMs,
-            artUrl: art,
-          }
-        : null,
-      positionMs:
-        typeof o.positionMs === 'number' ? Math.max(0, durationMs ? Math.min(o.positionMs, durationMs) : o.positionMs) : null,
+      track: title ? { uri: null, title, artist, album, durationMs, artUrl: art } : null,
+      positionMs,
     },
   };
 }
@@ -189,7 +221,7 @@ export function encodePowerShell(script: string): string {
 
 export class WindowsBridge implements SpotifyBridge {
   private loop: JsonLineProcess | null = null;
-  private lastArt: string | null = null;
+  private state: WindowsState = WINDOWS_START;
   private nextId = 1;
   private waiting = new Map<number, (ok: boolean) => void>();
 
@@ -205,11 +237,11 @@ export class WindowsBridge implements SpotifyBridge {
           done?.(msg.ok === true);
           return;
         }
-        const { snapshot, art } = parseWindowsLine(o, this.lastArt);
-        this.lastArt = art;
+        const { snapshot, state } = parseWindowsLine(o, this.state);
+        this.state = state;
         onSnapshot(snapshot);
       },
-      () => (this.lastArt = null),
+      () => (this.state = WINDOWS_START),
     );
     this.loop.start();
   }

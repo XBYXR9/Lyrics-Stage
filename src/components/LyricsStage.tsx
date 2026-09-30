@@ -87,7 +87,8 @@ export function LyricsStage({
         <LyricsLayer
           key={layer.key}
           layer={layer}
-          artUrl={layer.track.key === currentTrack?.key ? currentTrack.artUrl : layer.track.artUrl}
+          // The playing song's details can arrive after the song change (cover, length): use the latest.
+          track={currentTrack && layer.track.key === currentTrack.key ? currentTrack : layer.track}
           settings={settings}
           onSeek={onSeek}
         />
@@ -98,17 +99,17 @@ export function LyricsStage({
 
 function LyricsLayer({
   layer,
-  artUrl,
+  track,
   settings,
   onSeek,
 }: {
   layer: Layer;
-  artUrl: string | null;
+  track: TrackInfo;
   settings: Settings;
   onSeek: (ms: number) => void;
 }) {
-  const { lyrics, loading, error, retry } = useLyrics(layer.track);
-  const { palette, ready } = usePalette(artUrl);
+  const { lyrics, loading, error, retry } = useLyrics(track);
+  const { palette, ready } = usePalette(track.artUrl);
   const vibe = useMemo(() => analyzeVibe(lyrics, palette), [lyrics, palette]);
   const styleId = settings.style === 'auto' ? vibe.autoStyle : settings.style;
   const live = layer.phase !== 'out';
@@ -142,7 +143,7 @@ function LyricsLayer({
   } else if (lyrics.kind === 'instrumental') {
     body = <Message title="Instrumental" subtitle="Just vibes — no words in this one." icon={<span className="msg-note">♪</span>} />;
   } else if (lyrics.kind === 'plain') {
-    body = <PlainLyrics lyrics={lyrics} clock={layer.clock} durationMs={layer.track.durationMs} />;
+    body = <PlainLyrics lyrics={lyrics} clock={layer.clock} durationMs={track.durationMs} />;
   } else {
     const Style = STYLE_BY_ID[styleId].component;
     body = (

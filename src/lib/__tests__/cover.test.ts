@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickCover } from '../cover';
+import { pickAlbumCover, pickCover, similarity } from '../cover';
 
 const r = (trackName: string, artistName: string, collectionName: string, id: string) => ({
   trackName,
@@ -35,5 +35,29 @@ describe('pickCover', () => {
     expect(pickCover([r('Other Song', 'The Weeknd', 'After Hours', 'x')], { name: 'Blinding Lights', artists: ['The Weeknd'], album: '' })).toBeNull();
     expect(pickCover([r('Blinding Lights', 'Cover Band', 'Hits', 'x')], { name: 'Blinding Lights', artists: ['The Weeknd'], album: '' })).toBeNull();
     expect(pickCover([], { name: 'Anything', artists: ['Anyone'], album: '' })).toBeNull();
+  });
+
+  it('accepts a slightly different spelling of the same song by the same artist', () => {
+    const got = pickCover([r('Tamly Maak', 'Amr Diab', 'Tamally Maak', 'amr')], { name: 'Tamally Maak', artists: ['Amr Diab'], album: 'Tamally Maak' });
+    expect(got).toContain('/amr/600x600bb.jpg');
+    expect(similarity('tamallymaak', 'tamlymaak')).toBeGreaterThanOrEqual(0.8);
+  });
+});
+
+describe('pickAlbumCover', () => {
+  const a = (collectionName: string, artistName: string, id: string) => ({
+    collectionName,
+    artistName,
+    artworkUrl100: `https://is1-ssl.mzstatic.com/image/thumb/${id}/100x100bb.jpg`,
+  });
+
+  it("finds the song's album by the same artist", () => {
+    const results = [a('Tamally Maak - Single', 'Isaac Roman', 'cover'), a('Tamally Maak', 'Amr Diab', 'album')];
+    expect(pickAlbumCover(results, { name: 'Tamally Maak', artists: ['Amr Diab'], album: 'Tamally Maak' })).toContain('/album/600x600bb.jpg');
+  });
+
+  it('returns nothing without an album name or a matching artist', () => {
+    expect(pickAlbumCover([a('Hits', 'Someone', 'x')], { name: 'Song', artists: ['Someone'], album: '' })).toBeNull();
+    expect(pickAlbumCover([a('Hits', 'Other Band', 'x')], { name: 'Song', artists: ['Someone'], album: 'Hits' })).toBeNull();
   });
 });

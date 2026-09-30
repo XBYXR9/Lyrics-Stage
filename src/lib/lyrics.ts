@@ -9,7 +9,7 @@ const BASE = 'https://lrclib.net/api';
 // LRCLIB accepts this header instead.
 const HEADERS = { 'Lrclib-Client': 'LyricsStage/0.1 (https://github.com/xbyxr9/spotifylyrics)' };
 
-interface LrclibRecord {
+export interface LrclibRecord {
   id: number;
   trackName: string;
   artistName: string;
@@ -24,18 +24,44 @@ interface LrclibRecord {
 
 const NONE = (source = 'LRCLIB'): Lyrics => ({ kind: 'none', lines: [], wordSynced: false, source });
 
-/** Strip bits that make titles fail to match: "- Remastered 2011", "(feat. X)" etc. */
+/** Strip bits that make titles fail to match: "- Remastered 2011", "(feat. X)", "(Radio Edit)" etc. */
 export function cleanTitle(name: string): string {
   return name
     .replace(/\s*[([](feat\.?|ft\.?|featuring|with|prod\.?)\s[^)\]]*[)\]]/gi, '')
     .replace(/\s+[-–—]\s+from\s+["“'].*$/i, '')
     .replace(
-      /\s+[-–—]\s+(\d{4}\s+)?(remaster(ed)?|re-?recorded|live|mono|stereo|single|radio edit|edit|version|acoustic|demo|bonus|deluxe|explicit|clean|sped up|slowed|taylor's version)\b.*$/i,
+      /\s+[-–—]\s+(\d{4}\s+)?(remaster(ed)?|re-?recorded|live|mono|stereo|single|radio edit|edit|version|acoustic|demo|bonus|deluxe|explicit|clean|sped up|slowed|original mix|extended|taylor's version)\b.*$/i,
       '',
     )
-    .replace(/\s*[([](remaster(ed)?|\d{4} remaster(ed)?|explicit|clean|live|mono|stereo)[^)\]]*[)\]]/gi, '')
+    .replace(
+      /\s*[([](remaster(ed)?|\d{4} (remaster(ed)?|mix|version)|explicit|clean|live|mono|stereo|radio edit|single version|album version|acoustic|sped up|slowed|bonus track|original mix|extended|deluxe|from\s)[^)\]]*[)\]]/gi,
+      '',
+    )
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Lowercase letters and digits only, accents removed: "Beyoncé!" → "beyonce". */
+export const normalizeName = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+
+/** Every artist in a combined string like "A, B & C feat. D", normalized. */
+function artistNames(artist: string): string[] {
+  return artist
+    .split(/,\s+|\s+&\s+|\s+(?:feat\.?|ft\.?|featuring|with|x)\s+/i)
+    .map(normalizeName)
+    .filter(Boolean);
+}
+
+/** Does an LRCLIB artist field name one of our artists? ("Beyoncé & JAY-Z" matches "Beyonce, JAY Z".) */
+export function sameArtist(recordArtist: string, ourArtist: string): boolean {
+  const theirs = normalizeName(recordArtist);
+  if (!theirs) return false;
+  return artistNames(ourArtist).some((a) => a === theirs || (a.length >= 3 && (theirs.includes(a) || a.includes(theirs))));
 }
 
 function toLyrics(r: LrclibRecord, durationMs: number): Lyrics {
@@ -53,23 +79,44 @@ function toLyrics(r: LrclibRecord, durationMs: number): Lyrics {
   return NONE(source);
 }
 
+export interface MatchContext {
+  /** The song's length in seconds, or null when the player hasn't said. */
+  durationSec: number | null;
+  title: string;
+  /** Full artist string, e.g. "A, B". */
+  artist: string;
+  /** True when LRCLIB already matched the artist (a search by artist name). */
+  artistChecked: boolean;
+}
+
 /** Lower is better. */
-function score(r: LrclibRecord, durationSec: number, title: string): number {
-  const diff = r.duration ? Math.abs(r.duration - durationSec) : 6;
+function score(r: LrclibRecord, m: MatchContext): number {
+  const diff = m.durationSec === null ? 0 : r.duration ? Math.abs(r.duration - m.durationSec) : 6;
   let s = diff * 2;
   if (!r.syncedLyrics) s += 40;
   if (r.hasWordSync) s -= 6;
-  if (r.trackName.toLowerCase().trim() !== title.toLowerCase()) s += 3;
+  if (normalizeName(cleanTitle(r.trackName) || r.trackName) !== normalizeName(m.title)) s += 3;
+  if (!m.artistChecked && !sameArtist(r.artistName, m.artist)) s += 4;
   return s;
 }
 
-function pickBest(records: LrclibRecord[], durationSec: number, title: string): LrclibRecord | null {
-  const usable = records.filter(
-    (r) =>
-      (r.syncedLyrics || r.plainLyrics || r.instrumental) &&
-      (!r.duration || Math.abs(r.duration - durationSec) <= (r.syncedLyrics ? 8 : 20)),
-  );
-  usable.sort((a, b) => score(a, durationSec, title) - score(b, durationSec, title));
+/**
+ * Picks the record that really is this recording. A different length usually
+ * means a different version (live, radio edit, a cover) whose timing won't
+ * match what you hear, so those are left out. Exported for tests.
+ */
+export function pickBest(records: LrclibRecord[], m: MatchContext): LrclibRecord | null {
+  const usable = records.filter((r) => {
+    if (!(r.syncedLyrics || r.plainLyrics || r.instrumental)) return false;
+    const artistOk = m.artistChecked || sameArtist(r.artistName, m.artist);
+    if (m.durationSec === null) return artistOk; // can't compare lengths: at least the artist must match
+    if (!r.duration) return artistOk;
+    const diff = Math.abs(r.duration - m.durationSec);
+    // Someone else's artist name (another script, a typo) is only trusted when the length matches closely.
+    if (!artistOk) return diff <= 2;
+    return diff <= (r.syncedLyrics ? 8 : 20);
+  });
+  usable.sort((a, b) => score(a, m) - score(b, m));
   return usable[0] ?? null;
 }
 
@@ -103,14 +150,17 @@ export function primaryArtist(artist: string): string {
   return artist.split(/,\s+/)[0]?.trim() || artist;
 }
 
+/** The song's length in whole seconds, or null when the player hasn't reported it (yet). */
+const lengthSec = (track: TrackInfo) => (track.durationMs > 0 ? Math.round(track.durationMs / 1000) : null);
+
 async function lookup(track: TrackInfo, signal?: AbortSignal): Promise<Lyrics> {
-  const fullArtist = track.artists[0] ?? '';
-  const artist = primaryArtist(fullArtist);
-  const durationSec = Math.round(track.durationMs / 1000);
+  const fullArtist = track.artists.join(', ');
+  const artist = primaryArtist(track.artists[0] ?? '');
+  const durationSec = lengthSec(track);
   const title = cleanTitle(track.name) || track.name;
 
-  // 1. Exact match (fast, cached by LRCLIB). Try the full artist string, then the first artist.
-  if (track.album) {
+  // 1. Exact match (fast, cached by LRCLIB). It needs the song's length. Try the full artist string, then the first artist.
+  if (track.album && durationSec !== null) {
     for (const name of new Set([fullArtist, artist])) {
       const exact = await getJson<LrclibRecord>(
         '/get',
@@ -121,15 +171,17 @@ async function lookup(track: TrackInfo, signal?: AbortSignal): Promise<Lyrics> {
     }
   }
 
-  // 2. Search by cleaned title + artist, then a looser free-text search.
-  const searches: Record<string, string>[] = [
-    { track_name: title, artist_name: artist },
-    { q: `${title} ${artist}` },
+  // 2. Search by cleaned title + artist, then a looser free-text search, then by title
+  //    alone (for when LRCLIB spells the artist differently).
+  const searches: { params: Record<string, string>; artistChecked: boolean }[] = [
+    { params: { track_name: title, artist_name: artist }, artistChecked: true },
+    { params: { q: `${title} ${artist}` }, artistChecked: false },
+    { params: { track_name: title }, artistChecked: false },
   ];
   let fallback: LrclibRecord | null = null;
-  for (const params of searches) {
+  for (const { params, artistChecked } of searches) {
     const results = await getJson<LrclibRecord[]>('/search', params, signal);
-    const best = results ? pickBest(results, durationSec, title) : null;
+    const best = results ? pickBest(results, { durationSec, title, artist: fullArtist, artistChecked }) : null;
     if (best?.syncedLyrics || best?.instrumental) return toLyrics(best, track.durationMs);
     fallback ??= best;
   }
@@ -139,9 +191,29 @@ async function lookup(track: TrackInfo, signal?: AbortSignal): Promise<Lyrics> {
 // ---- Caching: in memory for this visit + a small local cache between visits.
 
 const memory = new Map<string, Promise<Lyrics>>();
-const STORE_PREFIX = 'ls.lyrics.v1.';
-const STORE_INDEX = 'ls.lyrics.v1.index';
+// v2: results are saved per song *and* length, so a lookup made while the
+// player still reported the wrong length can't stick. Older results are dropped.
+const STORE_PREFIX = 'ls.lyrics.v2.';
+const STORE_INDEX = 'ls.lyrics.v2.index';
 const STORE_MAX = 80;
+const OLD_PREFIX = 'ls.lyrics.v1.';
+
+/** Songs are looked up again when the player corrects the song's length. */
+const cacheKey = (track: TrackInfo) => `${track.key}|${lengthSec(track) ?? '?'}`;
+
+let oldCacheCleared = false;
+function clearOldCache() {
+  if (oldCacheCleared) return;
+  oldCacheCleared = true;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(OLD_PREFIX)) localStorage.removeItem(k);
+    }
+  } catch {
+    /* storage blocked — nothing to clear */
+  }
+}
 
 function readStore(key: string): Lyrics | null {
   try {
@@ -153,6 +225,7 @@ function readStore(key: string): Lyrics | null {
 }
 
 function writeStore(key: string, lyrics: Lyrics) {
+  clearOldCache();
   try {
     const index: string[] = JSON.parse(localStorage.getItem(STORE_INDEX) || '[]');
     const next = [key, ...index.filter((k) => k !== key)];
@@ -164,27 +237,35 @@ function writeStore(key: string, lyrics: Lyrics) {
   }
 }
 
+/** True when lyrics for this song (at this length) are already loaded or saved, so no waiting is needed. */
+export function hasCachedLyrics(track: TrackInfo): boolean {
+  const key = cacheKey(track);
+  return !!track.localLyrics || memory.has(key) || readStore(key) !== null;
+}
+
 export function getLyrics(track: TrackInfo): Promise<Lyrics> {
   if (track.localLyrics) return Promise.resolve(track.localLyrics);
-  const cached = memory.get(track.key);
+  const key = cacheKey(track);
+  const cached = memory.get(key);
   if (cached) return cached;
-  const stored = readStore(track.key);
+  const stored = readStore(key);
   if (stored) {
     const p = Promise.resolve(stored);
-    memory.set(track.key, p);
+    memory.set(key, p);
     return p;
   }
   const p = lookup(track).then(
     (lyrics) => {
-      if (lyrics.kind !== 'none') writeStore(track.key, lyrics);
+      // Only save results found with a known length; they're the reliable ones.
+      if (lyrics.kind !== 'none' && lengthSec(track) !== null) writeStore(key, lyrics);
       return lyrics;
     },
     (err) => {
-      memory.delete(track.key); // allow a retry later
+      memory.delete(key); // allow a retry later
       throw err;
     },
   );
-  memory.set(track.key, p);
+  memory.set(key, p);
   return p;
 }
 

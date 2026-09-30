@@ -28,7 +28,9 @@ while (true) {
     try {
       const t = sp.currentTrack;
       const id = t.id();
-      if (id) snap.track = { id: id, name: t.name(), artist: t.artist(), album: t.album(), duration: t.duration(), artwork: t.artworkUrl() };
+      if (id) snap.track = { id: id, name: t.name(), artist: t.artist(), album: t.album(), duration: t.duration(), artwork: null };
+      // Some songs (local files, older Spotify versions) have no cover URL; that mustn't hide the song.
+      if (snap.track) { try { snap.track.artwork = t.artworkUrl(); } catch (e) {} }
     } catch (e) {}
     try { snap.position = sp.playerPosition(); } catch (e) {}
     snap.at = Date.now();

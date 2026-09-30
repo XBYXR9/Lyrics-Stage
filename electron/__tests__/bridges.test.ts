@@ -3,7 +3,7 @@ import { validateCommand } from '../../src/lib/desktopTypes';
 import { splitJsonLines } from '../bridge/child';
 import { mprisTrackUri, normalizeArtUrl, parseMpris } from '../bridge/linux';
 import { JXA_LOOP, macCommandScript, parseMacLine } from '../bridge/mac';
-import { encodePowerShell, parseWindowsLine, SMTC_SCRIPT } from '../bridge/windows';
+import { encodePowerShell, parseWindowsLine, SMTC_SCRIPT, WINDOWS_START } from '../bridge/windows';
 
 describe('macOS (AppleScript)', () => {
   it('reads a playing track', () => {
@@ -53,21 +53,45 @@ describe('Windows (media controls)', () => {
   it('reads a track and keeps the cover between updates', () => {
     const first = parseWindowsLine(
       { running: true, playing: true, title: 'Yellow', artist: 'Coldplay', album: 'Parachutes', durationMs: 266773, positionMs: 5000, at: 1, canSeek: true, artChanged: true, art: 'data:image/png;base64,AAA' },
-      null,
+      WINDOWS_START,
     );
     expect(first.snapshot).toMatchObject({ source: 'smtc', running: true, playing: true, positionMs: 5000, canSeek: true });
     expect(first.snapshot.track?.artUrl).toBe('data:image/png;base64,AAA');
-    const second = parseWindowsLine({ running: true, playing: true, title: 'Yellow', durationMs: 266773, positionMs: 5250 }, first.art);
+    const second = parseWindowsLine({ running: true, playing: true, title: 'Yellow', durationMs: 266773, positionMs: 5250 }, first.state);
     expect(second.snapshot.track?.artUrl).toBe('data:image/png;base64,AAA');
   });
 
   it('clamps the position to the song length', () => {
-    const { snapshot } = parseWindowsLine({ running: true, title: 'X', durationMs: 1000, positionMs: 5000 }, null);
+    const { snapshot } = parseWindowsLine({ running: true, title: 'X', durationMs: 1000, positionMs: 5000 }, WINDOWS_START);
     expect(snapshot.positionMs).toBe(1000);
   });
 
   it('reports Spotify closed', () => {
-    expect(parseWindowsLine({ running: false }, null).snapshot.running).toBe(false);
+    expect(parseWindowsLine({ running: false }, WINDOWS_START).snapshot.running).toBe(false);
+  });
+
+  it("ignores the previous song's timeline until Spotify updates it", () => {
+    const line = (title: string, at: number, updatedAt: number, positionMs: number, durationMs: number) => ({
+      running: true, playing: true, title, artist: 'A', album: 'B', at, updatedAt, positionMs, durationMs,
+    });
+    // Song A has been playing since t=100 000 (its timeline was set then).
+    let r = parseWindowsLine(line('Song A', 300_000, 100_000, 200_000, 210_000), WINDOWS_START);
+    expect(r.snapshot).toMatchObject({ positionMs: 200_000, track: { durationMs: 210_000 } });
+    // Song B's title shows up, but the timeline is still song A's.
+    r = parseWindowsLine(line('Song B', 310_000, 100_000, 210_000, 210_000), r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 0, track: { title: 'Song B', durationMs: 0 } });
+    r = parseWindowsLine(line('Song B', 310_750, 100_000, 210_000, 210_000), r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 750, track: { durationMs: 0 } });
+    // Spotify catches up: trust its numbers again.
+    r = parseWindowsLine(line('Song B', 311_000, 310_900, 1_100, 185_000), r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 1_100, track: { durationMs: 185_000 } });
+  });
+
+  it('trusts a fresh timeline at a song change, and the first song it sees', () => {
+    let r = parseWindowsLine({ running: true, playing: true, title: 'A', at: 50_000, updatedAt: 1_000, positionMs: 49_000, durationMs: 200_000 }, WINDOWS_START);
+    expect(r.snapshot.positionMs).toBe(49_000);
+    r = parseWindowsLine({ running: true, playing: true, title: 'B', at: 60_000, updatedAt: 59_900, positionMs: 100, durationMs: 180_000 }, r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 100, track: { durationMs: 180_000 } });
   });
 
   it('encodes the script for -EncodedCommand (UTF-16LE base64)', () => {

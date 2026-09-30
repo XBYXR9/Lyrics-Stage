@@ -10,13 +10,24 @@ import { toast } from './Toasts';
 const run = (p: Promise<unknown>) => p.catch((e) => toast(friendlyError(e), 'error'));
 
 export function NowPlaying({ engine, state }: { engine: Engine; state: EngineState }) {
+  const [brokenArt, setBrokenArt] = useState<string | null>(null);
   const track = state.track;
   if (!track) return null;
+  const artUrl = track.artUrl !== brokenArt ? track.artUrl : null;
   return (
     <section className="np" aria-label="Now playing">
       <div className="np-art-wrap">
-        {track.artUrl ? (
-          <img key={track.key} className="np-art" src={track.artUrl} alt={`${track.album} cover`} />
+        {artUrl ? (
+          <img
+            key={track.key}
+            className="np-art"
+            src={artUrl}
+            alt={`${track.album} cover`}
+            onError={() => {
+              setBrokenArt(artUrl);
+              engine.coverFailed?.(artUrl);
+            }}
+          />
         ) : (
           <div className="np-art np-art-empty">♪</div>
         )}

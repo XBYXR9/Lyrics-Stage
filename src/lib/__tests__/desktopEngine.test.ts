@@ -124,6 +124,17 @@ describe('DesktopEngine', () => {
     expect(engine.getState().change.seq).toBe(1); // still the same song, no transition
   });
 
+  it('updates the song length when it arrives after the title (Windows)', () => {
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api, async () => null);
+    engine.start();
+    emit(snap({ positionMs: 0, track: track('Song A', 0) }));
+    expect(engine.getState().track?.durationMs).toBe(0);
+    emit(snap({ positionMs: 250, track: track('Song A', 185_000) }));
+    expect(engine.getState().track?.durationMs).toBe(185_000);
+    expect(engine.getState().change.seq).toBe(1);
+  });
+
   it('looks up a cover when the player gives none, once per song', async () => {
     const { api, emit } = fakeApi();
     const finder = vi.fn(async () => 'https://covers.example/a.jpg');
@@ -138,6 +149,22 @@ describe('DesktopEngine', () => {
     // The player's own cover still wins if it shows up later.
     emit(snap({ positionMs: 1750, track: { ...track('Song A'), artUrl: 'data:image/png;base64,BBB' } }));
     expect(engine.getState().track?.artUrl).toBe('data:image/png;base64,BBB');
+  });
+
+  it("looks up a cover when the player's picture doesn't load", async () => {
+    const { api, emit } = fakeApi();
+    const finder = vi.fn(async () => 'https://covers.example/a.jpg');
+    const engine = new DesktopEngine(api, finder);
+    engine.start();
+    const broken = 'data:image/jpeg;base64,BROKEN';
+    emit(snap({ positionMs: 1000, track: { ...track('Song A'), artUrl: broken } }));
+    expect(finder).not.toHaveBeenCalled();
+    engine.coverFailed(broken);
+    await vi.waitFor(() => expect(engine.getState().track?.artUrl).toBe('https://covers.example/a.jpg'));
+    // The player keeps sending the broken picture: it stays replaced.
+    emit(snap({ positionMs: 1250, track: { ...track('Song A'), artUrl: broken } }));
+    expect(engine.getState().track?.artUrl).toBe('https://covers.example/a.jpg');
+    expect(finder).toHaveBeenCalledTimes(1);
   });
 
   it('turns failed commands into errors', async () => {

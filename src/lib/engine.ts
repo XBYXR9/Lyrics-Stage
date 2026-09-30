@@ -86,6 +86,8 @@ export interface Engine {
   listDevices(): Promise<DeviceInfo[]>;
   transferTo(deviceId: string): Promise<void>;
   enableBrowserPlayer(): Promise<void>;
+  /** The cover picture at this address didn't load; find another one if possible. */
+  coverFailed?(url: string): void;
 }
 
 export const BROWSER_PLAYER_NAME = 'Lyrics Stage';
