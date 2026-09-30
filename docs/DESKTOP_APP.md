@@ -26,6 +26,13 @@ The installers aren't code-signed yet, so your system may warn you the first tim
   to do this once.
 - **Windows:** "Windows protected your PC". Click **More info** → **Run anyway**.
 
+**Updates:** you only install by hand once (starting with version 0.2.0). After that:
+
+- **Windows and the Linux AppImage** update themselves. A new version downloads in the background, and an
+  **Update ready · Restart** button appears at the top. Click it, or just quit the app, and the new version installs.
+- **macOS and the Linux `.deb`** show **Version … is out · Download** instead. macOS only lets *signed* apps replace
+  themselves (signing needs a paid Apple Developer account); a `.deb` belongs to your system's package manager.
+
 **Or run it from the source code:**
 
 ```bash
@@ -122,11 +129,20 @@ The **Build desktop app** GitHub Actions workflow (`.github/workflows/release.ym
 installers:
 
 - **Run it by hand** (Actions tab → Build desktop app → Run workflow) to download them as artifacts.
-- **Push a version tag** to publish them on a GitHub Release:
+- **Publish a new version** (installed apps then update themselves):
 
-  ```bash
-  git tag v0.2.0 && git push origin v0.2.0
-  ```
+  1. Change `"version"` in `package.json` (for example to `0.3.0`) and merge it.
+  2. Tag that commit with the same version and push the tag:
+
+     ```bash
+     git tag v0.3.0 && git push origin v0.3.0
+     ```
+
+  The workflow stops early if the tag and `package.json` disagree, since installed apps compare versions.
+
+Alongside the installers, each release carries small update files that the app reads (`electron/updater.ts`):
+`latest.yml` (Windows), `latest-arm64.yml` (Windows on Arm), `latest-linux.yml` (AppImage) and `.blockmap` files, which
+let the app download only the parts that changed. The app checks 10 seconds after it opens, then every 6 hours.
 
 **Code signing (optional):** signing removes the security warnings. electron-builder signs automatically when the
 certificates are provided as secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, plus Apple notarization credentials for macOS).

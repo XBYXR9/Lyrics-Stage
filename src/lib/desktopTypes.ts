@@ -53,6 +53,16 @@ export interface CommandResult {
   volume?: number;
 }
 
+/** Where the desktop app's own update stands. */
+export type UpdateStatus =
+  | { state: 'none' }
+  /** Downloading a new version in the background (Windows, Linux AppImage). */
+  | { state: 'downloading'; version: string }
+  /** Downloaded: installs on restart (or when the app quits). */
+  | { state: 'ready'; version: string }
+  /** A new version is out, but this system can't install it by itself (macOS, Linux .deb): download page. */
+  | { state: 'available'; version: string; url: string };
+
 /** What the desktop app's preload script exposes as `window.lyricsStage`. */
 export interface LyricsStageDesktopApi {
   readonly isDesktop: true;
@@ -64,6 +74,10 @@ export interface LyricsStageDesktopApi {
   /** Opens the Spotify app — on its search page when `query` is given. */
   openSpotify(query?: string): Promise<void>;
   setAlwaysOnTop(on: boolean): Promise<void>;
+  /** Current update status right away, then every change. Returns an unsubscribe function. */
+  onUpdate(cb: (s: UpdateStatus) => void): () => void;
+  /** Restarts into the downloaded update. */
+  installUpdate(): Promise<void>;
 }
 
 /** Only Spotify URIs may be sent to the Spotify app (checked in both processes). */

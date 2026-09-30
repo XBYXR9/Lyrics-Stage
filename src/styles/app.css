@@ -203,6 +203,17 @@ kbd {
   backdrop-filter: blur(12px);
   white-space: nowrap;
 }
+.pill.update-pill {
+  border: 0;
+  font-family: inherit;
+  color: #111;
+  background: var(--accent, #fff);
+  text-decoration: none;
+  cursor: pointer;
+}
+.pill.update-pill:hover {
+  filter: brightness(1.1);
+}
 .pill.warn {
   background: rgba(255, 170, 60, 0.25);
   white-space: normal;
@@ -275,6 +286,7 @@ kbd {
 }
 .controls-hidden .topbar .icon-btn,
 .controls-hidden .topbar .style-btn,
+.controls-hidden .topbar .update-pill,
 .controls-hidden .np-controls,
 .controls-hidden .np-volume,
 .controls-hidden .devices {

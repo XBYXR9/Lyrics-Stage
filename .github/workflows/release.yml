@@ -3,7 +3,9 @@ name: Build desktop app
 # Builds installers for macOS, Windows and Linux.
 # - Run it by hand (Actions → "Build desktop app" → Run workflow) to get the
 #   installers as downloadable artifacts.
-# - Push a tag like v0.2.0 to also publish them on a GitHub Release.
+# - Push a tag like v0.2.0 to also publish them on a GitHub Release. Installed
+#   apps find it there and update themselves (see electron/updater.ts). The tag
+#   must match "version" in package.json.
 on:
   workflow_dispatch:
   push:
@@ -38,6 +40,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Check the tag matches the app version
+        # Installed apps compare versions, so a release tagged v0.3.0 must contain version 0.3.0.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but package.json says $expected. Change \"version\" in package.json to match, then tag again."
+            exit 1
+          fi
       - run: npm ci
       - run: npm test
       - name: Build installers
@@ -45,14 +57,23 @@ jobs:
         env:
           # The builds aren't code-signed (see docs/DESKTOP_APP.md).
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # Both Windows builds write their update info to latest.yml. The Arm build
+      # publishes it as latest-arm64.yml, which is the file the app on Arm reads.
+      - name: Name the Windows on Arm update file
+        if: matrix.name == 'windows-arm64'
+        shell: pwsh
+        run: Move-Item release/latest.yml release/latest-arm64.yml
       - uses: actions/upload-artifact@v4
         with:
           name: lyrics-stage-${{ matrix.name }}
+          # latest*.yml and .blockmap files let installed apps find and download updates.
           path: |
             release/*.dmg
             release/*.exe
             release/*.AppImage
             release/*.deb
+            release/latest*.yml
+            release/*.blockmap
           if-no-files-found: error
 
   release:

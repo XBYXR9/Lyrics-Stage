@@ -19,6 +19,8 @@ function fakeApi() {
     },
     openSpotify: vi.fn(async () => {}),
     setAlwaysOnTop: async () => {},
+    onUpdate: () => () => {},
+    installUpdate: async () => {},
   };
   return { api, sent, emit: (s: DesktopSnapshot) => listener?.(s) };
 }
