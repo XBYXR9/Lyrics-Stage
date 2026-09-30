@@ -22,6 +22,8 @@ export interface Settings {
   reduceMotion: boolean;
   /** Hide the player controls and show only lyrics. */
   lyricsOnly: boolean;
+  /** Desktop app: keep the window above other windows. */
+  alwaysOnTop: boolean;
 }
 
 const KEY = 'ls.settings.v1';
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   automixBlend: true,
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,
+  alwaysOnTop: false,
 };
 
 function load(): Settings {

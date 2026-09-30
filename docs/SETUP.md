@@ -1,6 +1,10 @@
-# Setup guide
+# Setup guide (web version)
 
-This guide gets Lyrics Stage running on your computer. Setup takes about 5 minutes.
+> **Using the desktop app?** You don't need any of this. The desktop app follows the Spotify app directly; see
+> [DESKTOP_APP.md](DESKTOP_APP.md).
+
+This guide gets the **web version** of Lyrics Stage running in your browser. It uses the Spotify Web API, which needs
+a (free) Spotify developer app. Setup takes about 5 minutes.
 
 ## 1. Install and start
 

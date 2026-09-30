@@ -195,7 +195,9 @@ function makeSongs(): DemoSong[] {
 }
 
 export class DemoEngine extends BaseEngine implements Engine {
+  readonly kind = 'demo';
   readonly isDemo = true;
+  readonly searchMode = 'results';
   private songs: DemoSong[] = [];
   private index = 0;
   private queued: number | null = null;

@@ -1,32 +1,48 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Stage } from './components/Stage';
 import { Setup } from './components/Setup';
+import { Stage } from './components/Stage';
 import { Toasts } from './components/Toasts';
 import { handleRedirect, isLoggedIn, logout } from './lib/auth';
 import { DemoEngine } from './lib/demo';
+import { DesktopEngine } from './lib/desktopEngine';
+import { desktopApi } from './lib/desktopTypes';
 import { SpotifyEngine, type Engine } from './lib/engine';
 
-type Mode = 'loading' | 'setup' | 'spotify' | 'demo';
+// "desktop": the desktop app, following the Spotify app on this computer.
+// "spotify": the web version, using the Spotify Web API (needs a developer app).
+type Mode = 'loading' | 'setup' | 'spotify' | 'desktop' | 'demo';
 
 const DEMO_KEY = 'ls.demo';
 
 function initialMode(): Mode {
-  if (window.location.pathname === '/callback') return 'loading';
-  if (new URLSearchParams(window.location.search).has('demo')) return 'demo';
-  if (isLoggedIn()) return 'spotify';
+  const params = new URLSearchParams(window.location.search);
+  let demo = params.has('demo');
   try {
-    if (sessionStorage.getItem(DEMO_KEY) === '1') return 'demo';
+    demo ||= sessionStorage.getItem(DEMO_KEY) === '1';
   } catch {
     /* ignore */
   }
+  if (demo) return 'demo';
+  if (desktopApi()) return 'desktop';
+  if (window.location.pathname === '/callback') return 'loading';
+  if (isLoggedIn()) return 'spotify';
   return 'setup';
+}
+
+function setDemoFlag(on: boolean) {
+  try {
+    if (on) sessionStorage.setItem(DEMO_KEY, '1');
+    else sessionStorage.removeItem(DEMO_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [error, setError] = useState<string | null>(null);
 
-  // Finish the Spotify login if we just came back from it.
+  // Web version: finish the Spotify login if we just came back from it.
   useEffect(() => {
     if (mode !== 'loading') return;
     void handleRedirect().then((err) => {
@@ -35,10 +51,13 @@ export default function App() {
     });
   }, [mode]);
 
-  const engine: Engine | null = useMemo(
-    () => (mode === 'spotify' ? new SpotifyEngine() : mode === 'demo' ? new DemoEngine() : null),
-    [mode],
-  );
+  const engine: Engine | null = useMemo(() => {
+    if (mode === 'spotify') return new SpotifyEngine();
+    if (mode === 'demo') return new DemoEngine();
+    const api = desktopApi();
+    if (mode === 'desktop' && api) return new DesktopEngine(api);
+    return null;
+  }, [mode]);
 
   useEffect(() => {
     if (!engine) return;
@@ -46,37 +65,30 @@ export default function App() {
     return () => engine.stop();
   }, [engine]);
 
+  const startDemo = () => {
+    setDemoFlag(true);
+    setMode('demo');
+  };
+
   const signOut = () => {
-    try {
-      sessionStorage.removeItem(DEMO_KEY);
-    } catch {
-      /* ignore */
-    }
+    setDemoFlag(false);
     if (mode === 'spotify') logout();
     const url = new URL(window.location.href);
     url.searchParams.delete('demo');
     window.history.replaceState({}, '', url);
-    setMode('setup');
+    setMode(desktopApi() ? 'desktop' : 'setup');
   };
 
   if (mode === 'loading') return <div className="boot" />;
   if (!engine) {
     return (
       <>
-        <Setup
-          error={error}
-          onDemo={() => {
-            try {
-              sessionStorage.setItem(DEMO_KEY, '1');
-            } catch {
-              /* ignore */
-            }
-            setMode('demo');
-          }}
-        />
+        <Setup error={error} onDemo={startDemo} />
         <Toasts />
       </>
     );
   }
-  return <Stage key={mode} engine={engine} onSignOut={signOut} />;
+  return (
+    <Stage key={mode} engine={engine} onSignOut={signOut} onDemo={mode === 'desktop' ? startDemo : undefined} />
+  );
 }

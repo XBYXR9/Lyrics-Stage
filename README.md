@@ -1,8 +1,9 @@
 # Lyrics Stage
 
-**Apple Music–style animated lyrics for whatever you play on Spotify.** It runs on your own computer, follows the music
-on any of your devices, and picks lyric styles and colors that fit each song. When Spotify **Automix** or **Crossfade**
-blends two songs together, the lyrics and colors blend too, for exactly as long as the songs overlap.
+**Apple Music–style animated lyrics for whatever you play on Spotify.** Get it as a **desktop app** (macOS, Windows,
+Linux) that follows the Spotify app you're already logged into. There's no Spotify developer account to set up, and
+Spotify's **Automix** and **Crossfade** work. Lyrics styles and colors adapt to each song, and when Spotify blends two
+songs together, the lyrics blend too.
 
 ![Apple Music style](docs/screenshots/apple.jpg)
 
@@ -15,39 +16,59 @@ blends two songs together, the lyrics and colors blend too, for exactly as long 
 ## What it does
 
 - **Apple Music–style lyrics.** Big bold lines. Words light up as they're sung, held notes glow, and lines glide into
-  place one after another. You can tap a line to jump to it, or scroll to look around.
+  place one after another. Tap a line to jump to it, or scroll to look around.
 - **Five styles, plus Auto.** Apple Music, Karaoke (with a bouncing ball), Neon, Spotlight and Kinetic. **Auto** picks
   one for each song based on how fast the words come and how colorful the cover is.
-- **Adapts to each song.** Colors come from the album cover. The background moves faster for energetic songs and slower
-  for calm ones, and the scroll speed changes the same way.
-- **Adapts to Spotify Automix & Crossfade.** The app notices when songs overlap and crossfades the lyrics and background
+- **Adapts to each song.** Colors come from the album cover. The background and scrolling move faster for energetic
+  songs and slower for calm ones.
+- **Adapts to Spotify Automix & Crossfade.** The app spots when songs overlap and crossfades the lyrics and background
   over the same length of time. The old song's lyrics keep moving in time while they fade out.
-- **Follow any device, or play in the browser.** It follows playback on your phone, the desktop app or a speaker. With
-  Premium you can also play music right in the page.
-- **Search and play any song**, or add it to your queue.
 - **Works with right-to-left lyrics** such as Arabic and Hebrew.
-- **A demo mode** to try every style without connecting Spotify.
+- **A demo mode** to try every style without Spotify.
 
-## Quick start
+## Get the desktop app (recommended)
 
-You need [Node.js](https://nodejs.org) 20.19 or newer, plus a Spotify account (Premium is needed to control playback).
+1. Download the installer for your system from the **[Releases page](https://github.com/xbyxr9/spotifylyrics/releases)**,
+   or build it yourself (see below).
+2. Open **Spotify** and log in as usual. Then open **Lyrics Stage** and play a song.
+3. Want Automix? In Spotify: **profile picture → Settings → Playback → Automix** (Premium).
+
+On macOS, click **OK** when asked to let Lyrics Stage control Spotify. The installers aren't code-signed yet, so the first
+launch needs an extra click (right-click → Open on macOS; "More info → Run anyway" on Windows).
+
+Run it from the source code:
 
 ```bash
 git clone https://github.com/xbyxr9/spotifylyrics.git
 cd spotifylyrics
 npm install
+npm run app:start      # build and open the app
+npm run app:build      # or: make an installer in release/
+```
+
+Everything about the app, including the Linux timing note and how to publish installers, is in
+**[docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)**.
+
+## Or use the web version
+
+The web version runs in your browser at http://127.0.0.1:5173. It uses the Spotify Web API, so it can follow **any**
+device, including your phone, and it can play music in the browser. The catch: you create a (free) Spotify developer
+app first, and Spotify limits those to 5 users.
+
+```bash
+npm install
 npm run dev
 ```
 
-The site opens at **http://127.0.0.1:5173**. The page then walks you through three steps:
+The page walks you through it. Full guide: **[docs/SETUP.md](docs/SETUP.md)**. Just want to look around? Click
+**Try the demo**.
 
-1. Create a free app on the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-2. Add the redirect URI `http://127.0.0.1:5173/callback`, and tick **Web API** and **Web Playback SDK**.
-3. Paste the app's **Client ID** into the page and click **Connect Spotify**.
-
-The full guide, with fixes for common problems, is in **[docs/SETUP.md](docs/SETUP.md)**.
-
-Just want to look around? Click **Try the demo** on the first screen.
+| | Desktop app | Web version |
+| --- | --- | --- |
+| Setup | None — uses your Spotify app | Create a Spotify developer app |
+| Automix | ✅ (Spotify's own) | ✅ when playing from a Spotify app, ❌ in-browser player |
+| Follows your phone | ❌ (only the Spotify app on the same computer) | ✅ |
+| Search | Opens in Spotify | Search and play inside the page |
 
 ## Using it
 
@@ -69,24 +90,28 @@ Just want to look around? Click **Try the demo** on the first screen.
 
 ## How it works (short version)
 
-- **Spotify:** the site logs in with Spotify's PKCE flow, so no secret or server is needed. It checks what's playing
-  about once a second, and more often near the end of a song so it can catch Automix transitions.
-- **Lyrics:** they come from [LRCLIB](https://lrclib.net), a free and open database of time-synced lyrics. When a song
-  only has line timing, the app estimates the timing of each word.
+- **Desktop app:** reads what the Spotify app is playing through your operating system (AppleScript on macOS, media
+  controls on Windows, MPRIS on Linux) about 4 times a second, and sends play/pause/skip/seek back the same way. It
+  never asks for your Spotify password.
+- **Web version:** logs in with Spotify's PKCE flow (no secret or server) and checks the Web API about once a second.
+- **Lyrics:** from [LRCLIB](https://lrclib.net), a free and open database of time-synced lyrics. When a song only has
+  line timing, the app estimates the timing of each word.
 - **Automix detection:** Spotify doesn't say when Automix is happening, but the timing gives it away. If the next song
   starts while the current one still has time left, or starts part-way in, it's a blend.
 
-The details are in **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**.
+Details: **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**.
 
 ## Project layout
 
 ```
+electron/         the desktop app: window, and bridges to the Spotify app (bridge/mac|windows|linux.ts)
 src/
-  lib/            logic: Spotify login & API, playback engine, clock, Automix detection,
-                  lyrics lookup & parsing, color palette, song "vibe", demo mode
+  lib/            logic: engines (desktop, Web API, demo), clock, Automix detection,
+                  lyrics lookup & parsing, color palette, song "vibe"
   components/     React UI: stage, player panel, search, settings, background
     styles/       the lyric styles (Apple Music, Karaoke, Neon, Spotlight, Kinetic)
   styles/         CSS
+scripts/          app build/dev scripts, and a fake Spotify for Linux development
 docs/             guides and screenshots
 ```
 
@@ -96,19 +121,20 @@ Ideas, bug reports and new lyric styles are welcome. See **[CONTRIBUTING.md](CON
 style, start with **[docs/ADDING_A_STYLE.md](docs/ADDING_A_STYLE.md)**.
 
 ```bash
-npm run dev        # start the site
+npm run app:dev    # the desktop app with live reload
+npm run dev        # the web version
 npm test           # run the unit tests
 npm run typecheck  # check types
-npm run build      # production build
 ```
 
 ## Limits
 
-- Controlling playback (play, pause, skip, search-to-play) needs **Spotify Premium**. That's Spotify's rule.
-- Apps in Spotify's "Development mode" work for up to 5 Spotify accounts, which you add in the dashboard.
+- **Automix and Crossfade need Spotify Premium**, and Automix only works on some playlists. That's Spotify's rule.
+- **Desktop app on Linux:** Spotify's Linux app doesn't share the song position, so timing is estimated from the start
+  of each song. Click a lyric line to sync.
+- **Web version:** controlling playback needs Premium, and developer apps are limited to 5 Spotify accounts.
 - Some songs have no lyrics on LRCLIB yet. You can add them at [lrclib.net](https://lrclib.net).
-- Spotify doesn't share Automix transition points, so blends are detected from timing. The detection is usually
-  accurate to within half a second.
+- Spotify doesn't share Automix transition points, so blends are detected from timing.
 
 ## Credits & license
 

@@ -107,6 +107,20 @@ function Progress({ engine, durationMs }: { engine: Engine; durationMs: number }
 }
 
 function DevicePicker({ engine, state }: { engine: Engine; state: EngineState }) {
+  if (engine.kind === 'desktop') {
+    return (
+      <div className="devices">
+        <span className="device-btn static">
+          <DeviceIcon width={16} height={16} />
+          <span>Spotify app on this computer</span>
+        </span>
+      </div>
+    );
+  }
+  return <DeviceMenu engine={engine} state={state} />;
+}
+
+function DeviceMenu({ engine, state }: { engine: Engine; state: EngineState }) {
   const [open, setOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceInfo[] | null>(null);
 

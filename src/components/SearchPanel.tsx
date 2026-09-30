@@ -9,6 +9,57 @@ import { CloseIcon, PlayIcon, QueueIcon, SearchIcon } from './Icons';
 import { toast } from './Toasts';
 
 export function SearchPanel({ engine, onClose }: { engine: Engine; onClose: () => void }) {
+  if (engine.searchMode === 'external') return <SpotifySearch engine={engine} onClose={onClose} />;
+  return <ResultsSearch engine={engine} onClose={onClose} />;
+}
+
+/** Desktop app: search happens in the Spotify app itself. */
+function SpotifySearch({ engine, onClose }: { engine: Engine; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => inputRef.current?.focus(), []);
+  const go = async () => {
+    try {
+      await engine.search(query);
+      onClose();
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+  return (
+    <aside className="panel glass panel-short" aria-label="Search">
+      <div className="panel-head">
+        <div className="search-box">
+          <SearchIcon width={18} height={18} />
+          <input
+            ref={inputRef}
+            value={query}
+            placeholder="Search songs, artists…"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void go();
+              if (e.key === 'Escape') onClose();
+              e.stopPropagation();
+            }}
+          />
+        </div>
+        <button className="icon-btn" onClick={onClose} aria-label="Close search">
+          <CloseIcon />
+        </button>
+      </div>
+      <div className="results">
+        <div className="panel-hint">
+          Press Enter to search in the Spotify app. Pick a song there and the lyrics show up here.
+        </div>
+        <button className="btn primary wide" onClick={() => void go()}>
+          {query.trim() ? `Search “${query.trim()}” in Spotify` : 'Open Spotify'}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function ResultsSearch({ engine, onClose }: { engine: Engine; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TrackInfo[]>([]);
   const [busy, setBusy] = useState(false);

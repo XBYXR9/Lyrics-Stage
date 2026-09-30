@@ -35,6 +35,16 @@ export interface TrackChange {
 
 export type BrowserPlayerStatus = 'off' | 'loading' | 'ready' | 'error';
 
+/** Only used by the desktop app: the Spotify app on this computer. */
+export interface SpotifyAppStatus {
+  /** Is the Spotify app open? */
+  running: boolean;
+  /** Something the user can fix (e.g. a macOS permission). */
+  problem?: string;
+  /** False when the Spotify app doesn't report song position (Linux), so we count time ourselves. */
+  exactPosition: boolean;
+}
+
 export interface EngineState {
   status: 'connecting' | 'playing' | 'paused' | 'nothing' | 'ad';
   track: TrackInfo | null;
@@ -49,10 +59,18 @@ export interface EngineState {
   problem: string | null;
   /** Set when the login is no longer valid. */
   authExpired: boolean;
+  /** Desktop app only: status of the linked Spotify app. */
+  spotifyApp: SpotifyAppStatus | null;
 }
 
+export type EngineKind = 'web-api' | 'desktop' | 'demo';
+
 export interface Engine {
+  /** Where playback info comes from: the Spotify Web API, the Spotify app on this computer, or the demo. */
+  readonly kind: EngineKind;
   readonly isDemo: boolean;
+  /** "results": search shows songs you can play here. "external": search opens in the Spotify app. */
+  readonly searchMode: 'results' | 'external';
   readonly clock: PlaybackClock;
   subscribe(listener: () => void): () => void;
   getState(): EngineState;
@@ -91,14 +109,18 @@ export function initialEngineState(): EngineState {
     typicalBlendMs: null,
     problem: null,
     authExpired: false,
+    spotifyApp: null,
   };
 }
 
-/** Shared bits for the real engine and the demo engine. */
+/** Shared bits for all engines: state, listeners and song-change detection. */
 export abstract class BaseEngine {
   readonly clock = new PlaybackClock();
   protected state: EngineState = initialEngineState();
   private listeners = new Set<() => void>();
+  protected lastReportAt = 0;
+  protected lastChangeAt = 0;
+  protected learner = new BlendLearner();
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -110,6 +132,49 @@ export abstract class BaseEngine {
   protected update(patch: Partial<EngineState>) {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach((l) => l());
+  }
+
+  /** Called after a new song is detected (e.g. to look at the queue). */
+  protected onTrackChanged(): void {}
+
+  /**
+   * Core logic shared by every source: is this a new song (and if so, how did
+   * it hand over — skip, natural end, or an Automix/Crossfade blend?) or just
+   * a position update?
+   */
+  protected observe(track: TrackInfo, positionMs: number, playing: boolean, measuredAt: number) {
+    const prev = this.state.track;
+    if (!prev || prev.key !== track.key) {
+      const transition: TransitionInfo = prev
+        ? classifyTransition({
+            prevDurationMs: prev.durationMs,
+            prevPositionMs: this.clock.raw(measuredAt),
+            newPositionMs: positionMs,
+            sinceLastReportMs: this.lastReportAt ? measuredAt - this.lastReportAt : 5000,
+            wasPlaying: this.clock.playing,
+          })
+        : { kind: 'initial', overlapMs: 0, startOffsetMs: positionMs };
+      this.learner.record(transition);
+      const ghost = prev ? this.clock.fork(transition.kind === 'blend') : null;
+      this.clock.set(positionMs, playing, measuredAt, track.durationMs);
+      this.lastChangeAt = performance.now();
+      this.update({
+        track,
+        status: playing ? 'playing' : 'paused',
+        isPlaying: playing,
+        nextTrack: null,
+        typicalBlendMs: this.learner.typicalOverlapMs,
+        change: { seq: this.state.change.seq + 1, track, previous: prev, transition, ghost },
+      });
+      this.onTrackChanged();
+    } else {
+      this.clock.durationMs = track.durationMs;
+      this.clock.sync(positionMs, playing, measuredAt);
+      if (this.state.isPlaying !== playing || this.state.status !== (playing ? 'playing' : 'paused')) {
+        this.update({ isPlaying: playing, status: playing ? 'playing' : 'paused' });
+      }
+    }
+    this.lastReportAt = measuredAt;
   }
 }
 
@@ -135,15 +200,18 @@ function isApiTrack(item: unknown): item is ApiTrack {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class SpotifyEngine extends BaseEngine implements Engine {
+  readonly kind = 'web-api';
   readonly isDemo = false;
+  readonly searchMode = 'results';
   private running = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight = false;
   private pokeRequested = false;
   private failures = 0;
-  private lastReportAt = 0;
-  private lastChangeAt = 0;
-  private learner = new BlendLearner();
+
+  protected onTrackChanged() {
+    if (!this.sdkActive) void this.refreshQueue();
+  }
 
   private player: SdkPlayer | null = null;
   /** True while this browser tab is the device Spotify is playing on. */
@@ -255,42 +323,6 @@ export class SpotifyEngine extends BaseEngine implements Engine {
     }
     this.observe(toTrackInfo(res.item), res.progress_ms ?? 0, res.is_playing, measuredAt);
     this.update({ device });
-  }
-
-  /** Core logic shared by both sources: new song? or just a position update? */
-  private observe(track: TrackInfo, positionMs: number, playing: boolean, measuredAt: number) {
-    const prev = this.state.track;
-    if (!prev || prev.key !== track.key) {
-      const transition: TransitionInfo = prev
-        ? classifyTransition({
-            prevDurationMs: prev.durationMs,
-            prevPositionMs: this.clock.raw(measuredAt),
-            newPositionMs: positionMs,
-            sinceLastReportMs: this.lastReportAt ? measuredAt - this.lastReportAt : 5000,
-            wasPlaying: this.clock.playing,
-          })
-        : { kind: 'initial', overlapMs: 0, startOffsetMs: positionMs };
-      this.learner.record(transition);
-      const ghost = prev ? this.clock.fork(transition.kind === 'blend') : null;
-      this.clock.set(positionMs, playing, measuredAt, track.durationMs);
-      this.lastChangeAt = performance.now();
-      this.update({
-        track,
-        status: playing ? 'playing' : 'paused',
-        isPlaying: playing,
-        nextTrack: null,
-        typicalBlendMs: this.learner.typicalOverlapMs,
-        change: { seq: this.state.change.seq + 1, track, previous: prev, transition, ghost },
-      });
-      if (!this.sdkActive) void this.refreshQueue();
-    } else {
-      this.clock.durationMs = track.durationMs;
-      this.clock.sync(positionMs, playing, measuredAt);
-      if (this.state.isPlaying !== playing || this.state.status !== (playing ? 'playing' : 'paused')) {
-        this.update({ isPlaying: playing, status: playing ? 'playing' : 'paused' });
-      }
-    }
-    this.lastReportAt = measuredAt;
   }
 
   /** Look at the queue so the next song's lyrics & colors are ready before it starts. */
