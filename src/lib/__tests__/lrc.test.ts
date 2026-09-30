@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateWords, findLineIndex, INTERLUDE_MIN_MS, parseLrc, parseLyricsfile, plainLyrics, wordProgress } from '../lrc';
+import { estimateWords, findLineIndex, INTERLUDE_MIN_MS, parseLrc, parseLyricsfile, plainLyrics, singingPace, wordProgress } from '../lrc';
 
 describe('parseLrc', () => {
   it('parses timestamps, skips metadata and marks the first gap as an interlude', () => {
@@ -75,6 +75,31 @@ describe('estimateWords', () => {
     for (let i = 1; i < words.length; i++) expect(words[i].start).toBe(words[i - 1].end);
     const dur = words.map((w) => w.end - w.start);
     expect(dur[1]).toBeGreaterThan(dur[0]);
+  });
+});
+
+describe('estimated word timing', () => {
+  const at = (ms: number) => {
+    const s = ms / 1000;
+    return `[${String(Math.floor(s / 60)).padStart(2, '0')}:${(s % 60).toFixed(2).padStart(5, '0')}]`;
+  };
+  // Ten lines sung back to back, 2 s each, then a short line followed by a 5 s pause.
+  const dense = Array.from({ length: 10 }, (_, i) => `${at(10_000 + i * 2000)}Running through the city lights`);
+  const lyrics = parseLrc([...dense, `${at(30_000)}Running through the city lights`, `${at(35_000)}Again`].join('\n'));
+
+  it("measures the song's pace from lines sung back to back", () => {
+    const pace = singingPace(dense.map((_, i) => ({ text: 'Running through the city lights', gapMs: i < 9 ? 2000 : 5000 })));
+    expect(pace).toBeGreaterThan(60);
+    expect(pace).toBeLessThan(90);
+  });
+
+  it("doesn't stretch a line over the pause after it", () => {
+    const beforePause = lyrics.lines.find((l) => l.start === 30_000)!;
+    const lastWord = beforePause.words[beforePause.words.length - 1];
+    // Sung at the same pace as the others (about 2 s), not spread over 4.5 s.
+    expect(lastWord.end - beforePause.start).toBeLessThan(2600);
+    const dense0 = lyrics.lines.find((l) => l.start === 10_000)!;
+    expect(dense0.words[dense0.words.length - 1].end - dense0.start).toBeGreaterThan(1500);
   });
 });
 

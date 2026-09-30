@@ -36,6 +36,9 @@ songs together, the lyrics blend too.
 On macOS, click **OK** when asked to let Lyrics Stage control Spotify. The installers aren't code-signed yet, so the first
 launch needs an extra click (right-click → Open on macOS; "More info → Run anyway" on Windows).
 
+From version 0.2.0 on, the app updates itself on Windows and Linux (AppImage): new versions download in the background
+and install when you restart it. On macOS it tells you when a new version is out.
+
 Run it from the source code:
 
 ```bash
@@ -85,7 +88,8 @@ The page walks you through it. Full guide: **[docs/SETUP.md](docs/SETUP.md)**. J
 | <kbd>S</kbd> | Settings |
 | <kbd>Y</kbd> | Next lyrics style |
 | <kbd>L</kbd> | Lyrics only (hide the player) |
-| <kbd>F</kbd> | Fullscreen |
+| <kbd>F</kbd> | Fullscreen (the buttons fade out until you move the mouse) |
+| <kbd>−</kbd> / <kbd>+</kbd> | Spotify volume down / up |
 | <kbd>[</kbd> / <kbd>]</kbd> | Show lyrics 0.1s later / earlier |
 
 ## How it works (short version)

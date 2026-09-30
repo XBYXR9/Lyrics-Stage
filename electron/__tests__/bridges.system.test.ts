@@ -62,6 +62,10 @@ describe.runIf(process.platform === 'win32')('Windows media-controls script (rea
       // No Spotify on the test machine, so the command can't succeed — but it must get an answer.
       ps.stdin.write(JSON.stringify({ type: 'playpause', id: 7 }) + '\n');
       await waitFor(() => lines.some((l) => l.reply === 7), 15000, 'a reply to the command').catch(withOutput);
+      // The volume helper is compiled on first use: it must compile (no error), even though there's no Spotify to turn up.
+      ps.stdin.write(JSON.stringify({ type: 'volume', delta: 0, id: 8 }) + '\n');
+      await waitFor(() => lines.some((l) => l.reply === 8), 30000, 'a reply to the volume command').catch(withOutput);
+      expect(lines.find((l) => l.reply === 8)!.error).toBeUndefined();
       expect(powerShellErrors(stderr)).toBe('');
     } finally {
       ps.kill();

@@ -3,7 +3,7 @@ import { validateCommand } from '../../src/lib/desktopTypes';
 import { splitJsonLines } from '../bridge/child';
 import { mprisTrackUri, normalizeArtUrl, parseMpris } from '../bridge/linux';
 import { JXA_LOOP, macCommandScript, parseMacLine } from '../bridge/mac';
-import { encodePowerShell, parseWindowsLine, SMTC_SCRIPT } from '../bridge/windows';
+import { encodePowerShell, parseWindowsLine, SMTC_SCRIPT, WINDOWS_START } from '../bridge/windows';
 
 describe('macOS (AppleScript)', () => {
   it('reads a playing track', () => {
@@ -43,6 +43,13 @@ describe('macOS (AppleScript)', () => {
     );
   });
 
+  it('reads and changes Spotify’s volume', () => {
+    expect(parseMacLine({ running: true, state: 'paused', volume: 64, track: null }).volume).toBe(64);
+    const script = macCommandScript({ type: 'volume', delta: -10 });
+    expect(script).toContain('set v to (sound volume) + (-10)');
+    expect(script.split('\n')[0]).toBe('tell application "Spotify"');
+  });
+
   it('has no template placeholders left in the JXA loop', () => {
     expect(JXA_LOOP).not.toContain('${');
     expect(JXA_LOOP).toContain("Application('Spotify')");
@@ -53,21 +60,45 @@ describe('Windows (media controls)', () => {
   it('reads a track and keeps the cover between updates', () => {
     const first = parseWindowsLine(
       { running: true, playing: true, title: 'Yellow', artist: 'Coldplay', album: 'Parachutes', durationMs: 266773, positionMs: 5000, at: 1, canSeek: true, artChanged: true, art: 'data:image/png;base64,AAA' },
-      null,
+      WINDOWS_START,
     );
     expect(first.snapshot).toMatchObject({ source: 'smtc', running: true, playing: true, positionMs: 5000, canSeek: true });
     expect(first.snapshot.track?.artUrl).toBe('data:image/png;base64,AAA');
-    const second = parseWindowsLine({ running: true, playing: true, title: 'Yellow', durationMs: 266773, positionMs: 5250 }, first.art);
+    const second = parseWindowsLine({ running: true, playing: true, title: 'Yellow', durationMs: 266773, positionMs: 5250 }, first.state);
     expect(second.snapshot.track?.artUrl).toBe('data:image/png;base64,AAA');
   });
 
   it('clamps the position to the song length', () => {
-    const { snapshot } = parseWindowsLine({ running: true, title: 'X', durationMs: 1000, positionMs: 5000 }, null);
+    const { snapshot } = parseWindowsLine({ running: true, title: 'X', durationMs: 1000, positionMs: 5000 }, WINDOWS_START);
     expect(snapshot.positionMs).toBe(1000);
   });
 
   it('reports Spotify closed', () => {
-    expect(parseWindowsLine({ running: false }, null).snapshot.running).toBe(false);
+    expect(parseWindowsLine({ running: false }, WINDOWS_START).snapshot.running).toBe(false);
+  });
+
+  it("ignores the previous song's timeline until Spotify updates it", () => {
+    const line = (title: string, at: number, updatedAt: number, positionMs: number, durationMs: number) => ({
+      running: true, playing: true, title, artist: 'A', album: 'B', at, updatedAt, positionMs, durationMs,
+    });
+    // Song A has been playing since t=100 000 (its timeline was set then).
+    let r = parseWindowsLine(line('Song A', 300_000, 100_000, 200_000, 210_000), WINDOWS_START);
+    expect(r.snapshot).toMatchObject({ positionMs: 200_000, track: { durationMs: 210_000 } });
+    // Song B's title shows up, but the timeline is still song A's.
+    r = parseWindowsLine(line('Song B', 310_000, 100_000, 210_000, 210_000), r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 0, track: { title: 'Song B', durationMs: 0 } });
+    r = parseWindowsLine(line('Song B', 310_750, 100_000, 210_000, 210_000), r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 750, track: { durationMs: 0 } });
+    // Spotify catches up: trust its numbers again.
+    r = parseWindowsLine(line('Song B', 311_000, 310_900, 1_100, 185_000), r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 1_100, track: { durationMs: 185_000 } });
+  });
+
+  it('trusts a fresh timeline at a song change, and the first song it sees', () => {
+    let r = parseWindowsLine({ running: true, playing: true, title: 'A', at: 50_000, updatedAt: 1_000, positionMs: 49_000, durationMs: 200_000 }, WINDOWS_START);
+    expect(r.snapshot.positionMs).toBe(49_000);
+    r = parseWindowsLine({ running: true, playing: true, title: 'B', at: 60_000, updatedAt: 59_900, positionMs: 100, durationMs: 180_000 }, r.state);
+    expect(r.snapshot).toMatchObject({ positionMs: 100, track: { durationMs: 180_000 } });
   });
 
   it('encodes the script for -EncodedCommand (UTF-16LE base64)', () => {
@@ -75,6 +106,8 @@ describe('Windows (media controls)', () => {
     expect(Buffer.from(enc, 'base64').toString('utf16le')).toBe('Write-Output 1');
     expect(SMTC_SCRIPT).toContain("ParameterType.Name -eq 'IAsyncOperation`1'");
     expect(SMTC_SCRIPT).not.toContain('${');
+    // The C# volume helper sits in a PowerShell here-string, whose end marker must start a line.
+    expect(SMTC_SCRIPT).toMatch(/\n'@\n/);
   });
 });
 
@@ -94,6 +127,8 @@ describe('Linux (MPRIS)', () => {
       }),
     });
     expect(state.playing).toBe(true);
+    expect(state.volume).toBeNull();
+    expect(parseMpris({ PlaybackStatus: v('Paused'), Volume: v(0.456) }).volume).toBe(46);
     expect(state.trackId).toBe('/com/spotify/track/3AJwUDP919kvQ9QcozQPxg');
     expect(state.track).toEqual({
       uri: 'spotify:track:3AJwUDP919kvQ9QcozQPxg',
@@ -125,6 +160,9 @@ describe('command validation (from the page)', () => {
     expect(validateCommand({ type: 'openUri', uri: 'spotify:track:abc123DEF456' })).not.toBeNull();
     expect(validateCommand({ type: 'openUri', uri: 'spotify:track:x" & do shell script "rm' })).toBeNull();
     expect(validateCommand({ type: 'openUri', uri: 'https://evil.example' })).toBeNull();
+    expect(validateCommand({ type: 'volume', delta: 10.4 })).toEqual({ type: 'volume', delta: 10 });
+    expect(validateCommand({ type: 'volume', delta: '5; rm' })).toBeNull();
+    expect(validateCommand({ type: 'volume', delta: 1000 })).toBeNull();
     expect(validateCommand({ type: 'rm -rf' })).toBeNull();
     expect(validateCommand(null)).toBeNull();
   });

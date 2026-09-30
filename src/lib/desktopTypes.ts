@@ -31,6 +31,8 @@ export interface DesktopSnapshot {
   canSeek: boolean;
   /** A problem the user can fix, in plain words. */
   problem?: string;
+  /** Spotify's volume (0–100), when the system interface reports it (macOS, Linux). */
+  volume?: number | null;
 }
 
 export type DesktopCommand =
@@ -40,12 +42,26 @@ export type DesktopCommand =
   | { type: 'next' }
   | { type: 'previous' }
   | { type: 'seek'; positionMs: number }
-  | { type: 'openUri'; uri: string };
+  | { type: 'openUri'; uri: string }
+  /** Turn Spotify up (+) or down (−) by this many percentage points. */
+  | { type: 'volume'; delta: number };
 
 export interface CommandResult {
   ok: boolean;
   error?: string;
+  /** Spotify's volume (0–100) after a volume command, when known. */
+  volume?: number;
 }
+
+/** Where the desktop app's own update stands. */
+export type UpdateStatus =
+  | { state: 'none' }
+  /** Downloading a new version in the background (Windows, Linux AppImage). */
+  | { state: 'downloading'; version: string }
+  /** Downloaded: installs on restart (or when the app quits). */
+  | { state: 'ready'; version: string }
+  /** A new version is out, but this system can't install it by itself (macOS, Linux .deb): download page. */
+  | { state: 'available'; version: string; url: string };
 
 /** What the desktop app's preload script exposes as `window.lyricsStage`. */
 export interface LyricsStageDesktopApi {
@@ -58,6 +74,10 @@ export interface LyricsStageDesktopApi {
   /** Opens the Spotify app — on its search page when `query` is given. */
   openSpotify(query?: string): Promise<void>;
   setAlwaysOnTop(on: boolean): Promise<void>;
+  /** Current update status right away, then every change. Returns an unsubscribe function. */
+  onUpdate(cb: (s: UpdateStatus) => void): () => void;
+  /** Restarts into the downloaded update. */
+  installUpdate(): Promise<void>;
 }
 
 /** Only Spotify URIs may be sent to the Spotify app (checked in both processes). */
@@ -80,6 +100,10 @@ export function validateCommand(c: unknown): DesktopCommand | null {
     }
     case 'openUri':
       return typeof cmd.uri === 'string' && SPOTIFY_URI_RE.test(cmd.uri) ? { type: 'openUri', uri: cmd.uri } : null;
+    case 'volume': {
+      const delta = Number(cmd.delta);
+      return Number.isFinite(delta) && Math.abs(delta) <= 100 ? { type: 'volume', delta: Math.round(delta) } : null;
+    }
     default:
       return null;
   }

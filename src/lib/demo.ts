@@ -2,7 +2,7 @@
 // fake clock. It lets you try every lyric style — and see an Automix-style
 // blend — without connecting Spotify. It's also handy for development.
 
-import { BaseEngine, type DeviceInfo, type Engine } from './engine';
+import { BaseEngine, clampVolume, type DeviceInfo, type Engine } from './engine';
 import { buildSynced } from './lrc';
 import { classifyTransition } from './transitions';
 import type { Lyrics, TrackInfo, TransitionInfo } from './types';
@@ -318,6 +318,11 @@ export class DemoEngine extends BaseEngine implements Engine {
   }
 
   async transferTo() {}
+
+  /** The demo has no sound, but the buttons should still respond. */
+  async changeVolume(delta: number) {
+    this.update({ volume: clampVolume((this.state.volume ?? 70) + delta) });
+  }
 
   async enableBrowserPlayer() {}
 }

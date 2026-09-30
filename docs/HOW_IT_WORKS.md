@@ -114,13 +114,20 @@ Lyrics come from **[LRCLIB](https://lrclib.net)**, a free, open lyrics database 
 
 Lookup order:
 
-1. `GET /api/get`: an exact match on title, artist, album and duration.
-2. `GET /api/search`: a search on a *cleaned* title ("Hey Jude - Remastered 2015" becomes "Hey Jude", "(feat. …)" is
-   removed) plus the artist.
+1. `GET /api/get`: an exact match on title, artist, album and duration (only when the song's length is known).
+2. `GET /api/search`: a search on a *cleaned* title ("Hey Jude - Remastered 2015" becomes "Hey Jude"; "(feat. …)",
+   "(Radio Edit)" and similar are removed) plus the artist.
 3. A looser free-text search.
+4. A search by title alone, for when LRCLIB spells the artist differently.
 
-Results are scored by how close the duration is, whether they're time-synced, and whether they have word timing. They
-are cached in memory and in `localStorage` (the last 80 songs).
+A different length usually means a different recording (live, radio edit, a cover), whose timing won't match what you
+hear. So results must be within 8 s of the song's length, and entries by another artist name are only accepted within
+2 s. Among those, results are scored by how close the length is, whether they're time-synced, and whether they have
+word timing.
+
+The desktop app can learn a song's length a moment after its title (Windows). Without a length the app waits briefly,
+then searches by title and artist only; when the length arrives, it looks again. Results are cached per song *and*
+length, in memory and in `localStorage` (the last 80 songs).
 
 The parser understands:
 
@@ -131,8 +138,10 @@ The parser understands:
 - Plain text, which is shown as a slowly scrolling page.
 
 Most songs only have **line** timing. To make word-by-word highlighting possible anyway, the parser estimates word
-timing: it works out how long the line is probably sung (from the gap to the next line, or from the text length for
-long gaps), then spreads that time over the words, giving longer words and pauses after punctuation more time.
+timing. First it measures the song's **pace** (ms per letter) on lines that run straight into the next one: about 65
+for rap, 100–115 for pop, 160 for a slow ballad. Each line is then sung at that pace, but never longer than the gap to
+the next line, so a short line before a pause isn't stretched over the pause. That time is spread over the words,
+giving longer words and pauses after punctuation more time.
 
 It also:
 

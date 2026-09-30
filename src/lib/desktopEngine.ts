@@ -9,8 +9,11 @@
 
 import { findCover, type CoverQuery } from './cover';
 import type { DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi } from './desktopTypes';
-import { BaseEngine, type DeviceInfo, type Engine, type SpotifyAppStatus } from './engine';
+import { BaseEngine, clampVolume, type DeviceInfo, type Engine, type SpotifyAppStatus } from './engine';
 import type { TrackInfo } from './types';
+
+/** How long to wait before trying a cover lookup again for the same song. */
+const COVER_RETRY_MS = 20_000;
 
 export const SPOTIFY_APP_DEVICE: DeviceInfo = {
   id: 'spotify-app',
@@ -51,7 +54,10 @@ export class DesktopEngine extends BaseEngine implements Engine {
   private findCover: (q: CoverQuery) => Promise<string | null>;
   /** Covers we looked up ourselves, for songs the player gave no cover for. */
   private foundCovers = new Map<string, string>();
-  private coverLookups = new Set<string>();
+  /** When we last looked up a cover for each song (a failed lookup is tried again later). */
+  private coverLookups = new Map<string, number>();
+  /** Cover pictures from the player that didn't load. */
+  private brokenCovers = new Set<string>();
 
   constructor(api: LyricsStageDesktopApi, coverFinder: (q: CoverQuery) => Promise<string | null> = findCover) {
     super();
@@ -85,6 +91,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
       if (!sameStatus(this.state.spotifyApp, spotifyApp)) p.spotifyApp = spotifyApp;
       if (this.state.problem !== (s.problem ?? null)) p.problem = s.problem ?? null;
       if (this.state.device !== SPOTIFY_APP_DEVICE) p.device = SPOTIFY_APP_DEVICE;
+      if (typeof s.volume === 'number' && s.volume !== this.state.volume && !this.volumeSettling()) p.volume = s.volume;
       return p;
     };
 
@@ -97,7 +104,8 @@ export class DesktopEngine extends BaseEngine implements Engine {
       return;
     }
 
-    // Cover: the player's own picture wins. Without one, use one we looked up.
+    // Cover: the player's own picture wins. Without one (or if it doesn't load), use one we looked up.
+    if (track.artUrl && this.brokenCovers.has(track.artUrl)) track.artUrl = track.artThumbUrl = null;
     if (!track.artUrl) {
       const found = this.foundCovers.get(track.key);
       if (found) track.artUrl = track.artThumbUrl = found;
@@ -113,32 +121,71 @@ export class DesktopEngine extends BaseEngine implements Engine {
     }
     this.observe(track, positionMs, s.playing, measuredAt);
     const p = patch();
-    // Same song, but its cover showed up a moment later (Windows often sends
-    // the title first and the picture after): show it now.
+    // Same song, but its cover or length showed up a moment later (Windows
+    // often sends the title first and the rest after): use them now. The
+    // length matters for finding the right version of the lyrics.
     const current = this.state.track;
-    if (current?.key === track.key && track.artUrl && current.artUrl !== track.artUrl) {
-      p.track = { ...current, artUrl: track.artUrl, artThumbUrl: track.artUrl };
+    if (current?.key === track.key) {
+      const fix: Partial<TrackInfo> = {};
+      if (track.artUrl && current.artUrl !== track.artUrl) fix.artUrl = fix.artThumbUrl = track.artUrl;
+      if (Math.abs(current.durationMs - track.durationMs) > 1000) fix.durationMs = track.durationMs;
+      if (Object.keys(fix).length) p.track = { ...current, ...fix };
     }
     if (Object.keys(p).length) this.update(p);
   }
 
-  /** Looks up a cover (once per song) when the player didn't provide one. */
+  /** Looks up a cover when the player didn't provide one: once per song, again after a while if it failed (e.g. offline). */
   private lookUpCover(track: TrackInfo) {
-    if (this.coverLookups.has(track.key)) return;
-    this.coverLookups.add(track.key);
+    const last = this.coverLookups.get(track.key);
+    if (last !== undefined && performance.now() - last < COVER_RETRY_MS) return;
+    this.coverLookups.set(track.key, performance.now());
     void this.findCover({ name: track.name, artists: track.artists, album: track.album }).then((url) => {
       if (!url) return;
       this.foundCovers.set(track.key, url);
       const current = this.state.track;
-      if (current?.key === track.key && !current.artUrl) {
+      if (current?.key === track.key && (!current.artUrl || this.brokenCovers.has(current.artUrl))) {
         this.update({ track: { ...current, artUrl: url, artThumbUrl: url } });
       }
     });
   }
 
+  coverFailed(url: string) {
+    if (this.brokenCovers.has(url)) return;
+    this.brokenCovers.add(url);
+    const current = this.state.track;
+    if (current?.artUrl !== url) return;
+    const found = this.foundCovers.get(current.key);
+    if (found && found !== url) this.update({ track: { ...current, artUrl: found, artThumbUrl: found } });
+    else {
+      this.update({ track: { ...current, artUrl: null, artThumbUrl: null } });
+      this.coverLookups.delete(current.key);
+      this.lookUpCover(current);
+    }
+  }
+
   private async send(c: DesktopCommand) {
     const res = await this.api.command(c);
     if (!res.ok) throw new Error(res.error ?? 'Spotify didn’t respond. Is the Spotify app open?');
+    return res;
+  }
+
+  /** Just after a volume change, the player can still report the old level for a moment. */
+  private volumeChangedAt = -Infinity;
+  private volumeSettling() {
+    return performance.now() - this.volumeChangedAt < 1500;
+  }
+
+  async changeVolume(delta: number) {
+    const before = this.state.volume;
+    if (before !== null) this.update({ volume: clampVolume(before + delta) });
+    this.volumeChangedAt = performance.now();
+    try {
+      const res = await this.send({ type: 'volume', delta });
+      if (typeof res.volume === 'number') this.update({ volume: clampVolume(res.volume) });
+    } catch (err) {
+      this.update({ volume: before });
+      throw err;
+    }
   }
 
   async togglePlay() {
@@ -148,12 +195,12 @@ export class DesktopEngine extends BaseEngine implements Engine {
     await this.send({ type: 'playpause' });
   }
 
-  next() {
-    return this.send({ type: 'next' });
+  async next() {
+    await this.send({ type: 'next' });
   }
 
-  previous() {
-    return this.send({ type: 'previous' });
+  async previous() {
+    await this.send({ type: 'previous' });
   }
 
   async seek(positionMs: number) {
@@ -162,8 +209,8 @@ export class DesktopEngine extends BaseEngine implements Engine {
     await this.send({ type: 'seek', positionMs });
   }
 
-  playTrack(uri: string) {
-    return this.send({ type: 'openUri', uri });
+  async playTrack(uri: string) {
+    await this.send({ type: 'openUri', uri });
   }
 
   async addToQueue() {

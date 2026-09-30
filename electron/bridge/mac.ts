@@ -9,7 +9,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { DesktopSnapshot } from '../../src/lib/desktopTypes';
 import { JsonLineProcess } from './child';
-import type { DesktopCommand, SpotifyBridge } from './types';
+import type { CommandReply, DesktopCommand, SpotifyBridge } from './types';
 
 const run = promisify(execFile);
 
@@ -28,9 +28,12 @@ while (true) {
     try {
       const t = sp.currentTrack;
       const id = t.id();
-      if (id) snap.track = { id: id, name: t.name(), artist: t.artist(), album: t.album(), duration: t.duration(), artwork: t.artworkUrl() };
+      if (id) snap.track = { id: id, name: t.name(), artist: t.artist(), album: t.album(), duration: t.duration(), artwork: null };
+      // Some songs (local files, older Spotify versions) have no cover URL; that mustn't hide the song.
+      if (snap.track) { try { snap.track.artwork = t.artworkUrl(); } catch (e) {} }
     } catch (e) {}
     try { snap.position = sp.playerPosition(); } catch (e) {}
+    try { snap.volume = sp.soundVolume(); } catch (e) {}
     snap.at = Date.now();
     emit(snap);
   } catch (e) {
@@ -78,6 +81,7 @@ export function parseMacLine(raw: unknown): DesktopSnapshot {
         }
       : null,
     positionMs: typeof o.position === 'number' ? Math.max(0, o.position * 1000) : null,
+    volume: typeof o.volume === 'number' ? Math.round(o.volume) : null,
   };
 }
 
@@ -100,6 +104,17 @@ export function macCommandScript(c: DesktopCommand): string {
     case 'openUri':
       // The URI is validated (letters and digits only) before it gets here.
       return tell(`play track "${c.uri}"`);
+    case 'volume':
+      // Spotify's own volume (0–100); prints the new level. `delta` is a whole number (validated).
+      return [
+        'tell application "Spotify"',
+        `  set v to (sound volume) + (${Math.round(c.delta)})`,
+        '  if v > 100 then set v to 100',
+        '  if v < 0 then set v to 0',
+        '  set sound volume to v',
+        '  return v',
+        'end tell',
+      ].join('\n');
   }
 }
 
@@ -115,9 +130,13 @@ export class MacBridge implements SpotifyBridge {
     this.loop?.stop();
   }
 
-  async command(c: DesktopCommand) {
+  async command(c: DesktopCommand): Promise<CommandReply | void> {
     try {
-      await run('osascript', ['-e', macCommandScript(c)], { timeout: 5000 });
+      const { stdout } = await run('osascript', ['-e', macCommandScript(c)], { timeout: 5000 });
+      if (c.type === 'volume') {
+        const volume = Number(String(stdout).trim());
+        return Number.isFinite(volume) ? { volume } : {};
+      }
     } catch (err) {
       const msg = String((err as { stderr?: string }).stderr || err);
       throw new Error(/-1743|not authori[sz]ed/i.test(msg) ? PERMISSION_HELP : 'Spotify didn’t respond. Is the Spotify app open?');

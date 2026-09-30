@@ -34,6 +34,8 @@ export interface SdkPlayer {
   addListener(event: 'autoplay_failed', cb: () => void): boolean;
   getCurrentState(): Promise<SdkState | null>;
   togglePlay(): Promise<void>;
+  /** 0..1 */
+  setVolume(volume: number): Promise<void>;
   activateElement(): Promise<void>;
 }
 

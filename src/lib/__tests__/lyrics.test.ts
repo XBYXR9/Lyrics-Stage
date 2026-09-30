@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanTitle, primaryArtist } from '../lyrics';
+import { cleanTitle, pickBest, primaryArtist, sameArtist, type LrclibRecord } from '../lyrics';
 import { parseLrc } from '../lrc';
 import { analyzeVibe, wordsPerSecond } from '../vibe';
 
@@ -14,6 +14,11 @@ describe('cleanTitle', () => {
     ['Cruel Summer (Taylor’s Version)', 'Cruel Summer (Taylor’s Version)'],
     ['All Too Well - Taylor\'s Version', 'All Too Well'],
     ['Track [Remastered]', 'Track'],
+    ['Song (Radio Edit)', 'Song'],
+    ['Song (Single Version)', 'Song'],
+    ['Song (Sped Up)', 'Song'],
+    ['Song (From "A Movie")', 'Song'],
+    ['Song (2019 Mix)', 'Song'],
   ])('%s → %s', (input, expected) => {
     expect(cleanTitle(input)).toBe(expected);
   });
@@ -26,6 +31,58 @@ describe('primaryArtist', () => {
     ['Simon & Garfunkel', 'Simon & Garfunkel'],
     ['Charli xcx', 'Charli xcx'],
   ])('%s → %s', (input, expected) => expect(primaryArtist(input)).toBe(expected));
+});
+
+describe('sameArtist', () => {
+  it.each([
+    ['Beyoncé & JAY-Z', 'Beyonce, JAY Z', true],
+    ['The Weeknd', 'The Weeknd, Daft Punk', true],
+    ['Daft Punk', 'The Weeknd, Daft Punk', true],
+    ['Coldplay', 'Coldplay feat. Rihanna', true],
+    ['Some Cover Band', 'The Weeknd', false],
+    ['', 'Anyone', false],
+  ])('%s vs %s → %s', (theirs, ours, expected) => expect(sameArtist(theirs, ours)).toBe(expected));
+});
+
+describe('pickBest', () => {
+  let id = 0;
+  const rec = (over: Partial<LrclibRecord>): LrclibRecord => ({
+    id: id++,
+    trackName: 'Song',
+    artistName: 'Artist',
+    albumName: 'Album',
+    duration: 200,
+    instrumental: false,
+    plainLyrics: 'words',
+    syncedLyrics: '[00:01.00]words',
+    ...over,
+  });
+  const ctx = { durationSec: 200, title: 'Song', artist: 'Artist', artistChecked: false };
+
+  it('prefers the version with the same length', () => {
+    const radioEdit = rec({ duration: 194 });
+    const album = rec({ duration: 201 });
+    expect(pickBest([radioEdit, album], ctx)).toBe(album);
+  });
+
+  it("leaves out other artists' versions (covers) unless the length matches closely", () => {
+    const cover = rec({ artistName: 'Cover Band', duration: 205 });
+    expect(pickBest([cover], ctx)).toBeNull();
+    const translit = rec({ artistName: 'Артист', duration: 201 });
+    expect(pickBest([translit], ctx)).toBe(translit);
+  });
+
+  it('still finds lyrics when the player gave no length, if the artist matches', () => {
+    const right = rec({ duration: 250 });
+    const other = rec({ artistName: 'Someone Else' });
+    expect(pickBest([other, right], { ...ctx, durationSec: null })).toBe(right);
+  });
+
+  it('prefers synced lyrics over plain ones', () => {
+    const plain = rec({ syncedLyrics: null });
+    const synced = rec({ duration: 203 });
+    expect(pickBest([plain, synced], ctx)).toBe(synced);
+  });
 });
 
 describe('vibe', () => {

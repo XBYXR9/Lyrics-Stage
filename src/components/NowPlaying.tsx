@@ -4,19 +4,30 @@ import { formatTime, useFrame } from '../hooks/hooks';
 import type { DeviceInfo, Engine, EngineState } from '../lib/engine';
 import { BROWSER_PLAYER_NAME } from '../lib/engine';
 import { friendlyError } from '../lib/spotify';
-import { DeviceIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from './Icons';
+import { DeviceIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, VolumeDownIcon, VolumeUpIcon } from './Icons';
 import { toast } from './Toasts';
 
 const run = (p: Promise<unknown>) => p.catch((e) => toast(friendlyError(e), 'error'));
 
 export function NowPlaying({ engine, state }: { engine: Engine; state: EngineState }) {
+  const [brokenArt, setBrokenArt] = useState<string | null>(null);
   const track = state.track;
   if (!track) return null;
+  const artUrl = track.artUrl !== brokenArt ? track.artUrl : null;
   return (
     <section className="np" aria-label="Now playing">
       <div className="np-art-wrap">
-        {track.artUrl ? (
-          <img key={track.key} className="np-art" src={track.artUrl} alt={`${track.album} cover`} />
+        {artUrl ? (
+          <img
+            key={track.key}
+            className="np-art"
+            src={artUrl}
+            alt={`${track.album} cover`}
+            onError={() => {
+              setBrokenArt(artUrl);
+              engine.coverFailed?.(artUrl);
+            }}
+          />
         ) : (
           <div className="np-art np-art-empty">♪</div>
         )}
@@ -41,8 +52,45 @@ export function NowPlaying({ engine, state }: { engine: Engine; state: EngineSta
           <NextIcon width={26} height={26} />
         </button>
       </div>
+      <Volume engine={engine} volume={state.volume} />
       <DevicePicker engine={engine} state={state} />
     </section>
+  );
+}
+
+/** How much one press of − or + changes Spotify's volume (percentage points). */
+export const VOLUME_STEP = 10;
+
+function Volume({ engine, volume }: { engine: Engine; volume: number | null }) {
+  const change = (delta: number) => run(engine.changeVolume(delta));
+  return (
+    <div className="np-volume">
+      <button className="icon-btn small" onClick={() => change(-VOLUME_STEP)} aria-label="Spotify volume down" title="Volume down (−)">
+        <VolumeDownIcon width={20} height={20} />
+      </button>
+      <div
+        className={`bar vol-bar${volume === null ? ' unknown' : ''}`}
+        role="slider"
+        aria-label="Spotify volume"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={volume ?? undefined}
+        title={volume === null ? 'Spotify volume' : `Spotify volume ${volume}%`}
+        onClick={(e) => {
+          if (volume === null) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          const target = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+          change(Math.min(100, Math.max(0, target)) - volume);
+        }}
+      >
+        <div className="bar-track">
+          <div className="bar-fill" style={{ transform: `scaleX(${(volume ?? 0) / 100})` }} />
+        </div>
+      </div>
+      <button className="icon-btn small" onClick={() => change(VOLUME_STEP)} aria-label="Spotify volume up" title="Volume up (+)">
+        <VolumeUpIcon width={20} height={20} />
+      </button>
+    </div>
   );
 }
 

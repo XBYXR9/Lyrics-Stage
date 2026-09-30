@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useEngineState, useLyrics, usePalette } from '../hooks/hooks';
 import { startLogin } from '../lib/auth';
-import { desktopApi } from '../lib/desktopTypes';
+import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
@@ -14,7 +14,7 @@ import { analyzeVibe } from '../lib/vibe';
 import { Background } from './Background';
 import { ExpandIcon, LyricsIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
 import { LyricsStage } from './LyricsStage';
-import { NowPlaying } from './NowPlaying';
+import { NowPlaying, VOLUME_STEP } from './NowPlaying';
 import { SearchPanel } from './SearchPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { STYLES, styleName } from './styles';
@@ -29,12 +29,72 @@ function toggleFullscreen() {
   else void document.documentElement.requestFullscreen?.().catch(() => {});
 }
 
+/** Desktop app: where its own update stands (null in the browser). */
+function useAppUpdate(): UpdateStatus | null {
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  useEffect(() => desktopApi()?.onUpdate(setStatus), []);
+  return status;
+}
+
+/** In fullscreen, the buttons fade out after this long without mouse, touch or keyboard use. */
+const HIDE_CONTROLS_AFTER_MS = 2500;
+
+/** Page fullscreen (F) or the window's own fullscreen (e.g. the desktop app's green button on macOS). */
+const isFullscreen = () =>
+  !!document.fullscreenElement || (window.innerWidth >= screen.width && window.innerHeight >= screen.height);
+
+/**
+ * True while the buttons should be hidden: in fullscreen, after a few idle
+ * seconds, unless a panel is open or the pointer rests on the controls.
+ */
+function useHideControlsInFullscreen(keepVisible: boolean): boolean {
+  const [fullscreen, setFullscreen] = useState(false);
+  const [idle, setIdle] = useState(false);
+
+  useEffect(() => {
+    const check = () => setFullscreen(isFullscreen());
+    check();
+    document.addEventListener('fullscreenchange', check);
+    window.addEventListener('resize', check);
+    return () => {
+      document.removeEventListener('fullscreenchange', check);
+      window.removeEventListener('resize', check);
+    };
+  }, []);
+
+  useEffect(() => {
+    setIdle(false);
+    if (!fullscreen || keepVisible) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let overControls = false;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => (overControls ? arm() : setIdle(true)), HIDE_CONTROLS_AFTER_MS);
+    };
+    const wake = (e: Event) => {
+      overControls = !!(e.target as Element | null)?.closest?.('.topbar button, .np');
+      setIdle(false);
+      arm();
+    };
+    const events = ['mousemove', 'pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
+    events.forEach((name) => window.addEventListener(name, wake, { passive: true }));
+    arm();
+    return () => {
+      clearTimeout(timer);
+      events.forEach((name) => window.removeEventListener(name, wake));
+    };
+  }, [fullscreen, keepVisible]);
+
+  return fullscreen && idle && !keepVisible;
+}
+
 export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut: () => void; onDemo?: () => void }) {
   const state = useEngineState(engine);
   const settings = useSettings();
   const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
   const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
+  const hideControls = useHideControlsInFullscreen(panel !== null);
 
   const { palette, ready } = usePalette(track?.artUrl);
   const { lyrics } = useLyrics(track);
@@ -111,6 +171,19 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
         case 'y':
           cycleStyle();
           break;
+        case '-':
+        case '=':
+        case '+': {
+          const delta = e.key === '-' ? -VOLUME_STEP : VOLUME_STEP;
+          void engine
+            .changeVolume(delta)
+            .then(() => {
+              const v = engine.getState().volume;
+              if (v !== null) toast(`Spotify volume ${v}%`);
+            })
+            .catch((err) => toast(friendlyError(err), 'error'));
+          break;
+        }
         case '[':
         case ']': {
           const offsetMs = getSettings().offsetMs + (e.key === ']' ? 100 : -100);
@@ -140,6 +213,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
 
   const currentStyle = settings.style === 'auto' ? vibe?.autoStyle ?? 'apple' : settings.style;
   const desktop = engine.kind === 'desktop' ? desktopApi() : null;
+  const update = useAppUpdate();
 
   // Desktop app: keep the window above others if the user wants a lyrics "mini player".
   useEffect(() => {
@@ -203,7 +277,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
     <div
       className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
         track ? '' : ' no-track'
-      }`}
+      }${hideControls ? ' controls-hidden' : ''}`}
       style={stageStyle}
     >
       <Background
@@ -239,6 +313,16 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
           <span className="pill hide-mobile" title="Spotify's Linux app doesn't share the song position, so timing starts when each song starts. Tap a lyric line to sync.">
             Timing estimated · tap a line to sync
           </span>
+        )}
+        {update?.state === 'ready' && (
+          <button className="pill update-pill" onClick={() => void desktopApi()?.installUpdate()} title={`Restart to use version ${update.version}`}>
+            Update ready · Restart
+          </button>
+        )}
+        {update?.state === 'available' && (
+          <a className="pill update-pill" href={update.url} target="_blank" rel="noreferrer" title="Opens the download page">
+            Version {update.version} is out · Download
+          </a>
         )}
         {settings.lyricsOnly && track && (
           <span className="lo-caption">

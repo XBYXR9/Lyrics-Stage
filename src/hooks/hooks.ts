@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Engine, EngineState } from '../lib/engine';
-import { getLyrics } from '../lib/lyrics';
+import { getLyrics, hasCachedLyrics } from '../lib/lyrics';
 import { FALLBACK_PALETTE, getPalette } from '../lib/palette';
 import type { Lyrics, Palette, TrackInfo } from '../lib/types';
 
@@ -41,6 +41,9 @@ export interface LyricsResult {
   retry: () => void;
 }
 
+/** How long to wait for the song's length before searching for lyrics without it. */
+const LENGTH_WAIT_MS = 1500;
+
 export function useLyrics(track: TrackInfo | null): LyricsResult {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<{ key: string | null; lyrics: Lyrics | null; error: boolean }>({
@@ -49,18 +52,25 @@ export function useLyrics(track: TrackInfo | null): LyricsResult {
     error: false,
   });
   const key = track?.key ?? null;
+  // The song's length helps pick the right version of the lyrics, and the
+  // desktop app can learn it a moment after the title: look up again when it changes.
+  const lengthSec = track ? Math.round(track.durationMs / 1000) : 0;
 
   useEffect(() => {
     if (!track) return;
     let alive = true;
-    getLyrics(track).then(
-      (lyrics) => alive && setState({ key: track.key, lyrics, error: false }),
-      () => alive && setState({ key: track.key, lyrics: null, error: true }),
-    );
+    const load = () =>
+      getLyrics(track).then(
+        (lyrics) => alive && setState({ key: track.key, lyrics, error: false }),
+        () => alive && setState({ key: track.key, lyrics: null, error: true }),
+      );
+    // No length yet: give the player a moment to report it before searching without it.
+    const timer = lengthSec > 0 || hasCachedLyrics(track) ? void load() : setTimeout(load, LENGTH_WAIT_MS);
     return () => {
       alive = false;
+      clearTimeout(timer);
     };
-  }, [key, nonce]);
+  }, [key, lengthSec, nonce]);
 
   const ready = state.key === key && key !== null;
   return {

@@ -203,6 +203,17 @@ kbd {
   backdrop-filter: blur(12px);
   white-space: nowrap;
 }
+.pill.update-pill {
+  border: 0;
+  font-family: inherit;
+  color: #111;
+  background: var(--accent, #fff);
+  text-decoration: none;
+  cursor: pointer;
+}
+.pill.update-pill:hover {
+  filter: brightness(1.1);
+}
 .pill.warn {
   background: rgba(255, 170, 60, 0.25);
   white-space: normal;
@@ -265,6 +276,28 @@ kbd {
 .topbar .spacer {
   flex: 1;
 }
+
+/* Fullscreen: the buttons (and the pointer) fade out slowly while you just
+   watch the lyrics, and come back quickly when you move the mouse. */
+.np-controls,
+.np-volume,
+.devices {
+  transition: opacity 0.2s ease;
+}
+.controls-hidden .topbar .icon-btn,
+.controls-hidden .topbar .style-btn,
+.controls-hidden .topbar .update-pill,
+.controls-hidden .np-controls,
+.controls-hidden .np-volume,
+.controls-hidden .devices {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+}
+.controls-hidden,
+.controls-hidden * {
+  cursor: none !important;
+}
 .lo-caption {
   font-size: 14px;
   font-weight: 600;
@@ -288,7 +321,9 @@ kbd {
   font-weight: 600;
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
-  transition: background 0.2s;
+  transition:
+    background 0.2s,
+    opacity 0.2s;
   white-space: nowrap;
 }
 .style-btn:hover {
@@ -433,6 +468,33 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 28px;
+}
+.np-volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(260px, 100%);
+  margin: -4px auto 0;
+}
+.np-volume .icon-btn.small {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  color: var(--text-dim);
+}
+.np-volume .icon-btn.small:hover {
+  color: #fff;
+}
+.vol-bar {
+  flex: 1;
+  min-width: 0;
+}
+.vol-bar .bar-fill {
+  transition: transform 0.2s ease;
+}
+.vol-bar.unknown {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .devices {
@@ -1142,6 +1204,7 @@ kbd {
     grid-area: progress;
   }
   .np-times,
+  .np-volume,
   .devices {
     display: none;
   }

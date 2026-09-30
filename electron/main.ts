@@ -7,6 +7,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { validateCommand, type DesktopSnapshot } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
+import { startUpdates } from './updater';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const bridge = createBridge(process.platform);
@@ -58,8 +59,8 @@ ipcMain.handle('ls:command', async (_event, raw: unknown) => {
   const cmd = validateCommand(raw);
   if (!cmd) return { ok: false, error: 'Unknown command.' };
   try {
-    await bridge.command(cmd);
-    return { ok: true };
+    const reply = await bridge.command(cmd);
+    return { ok: true, ...(reply ?? {}) };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -80,6 +81,7 @@ ipcMain.handle('ls:always-on-top', (_event, on: unknown) => {
 
 app.whenReady().then(() => {
   createWindow();
+  startUpdates(() => win);
   bridge.start((snapshot) => {
     lastSnapshot = snapshot;
     win?.webContents.send('ls:snapshot', snapshot);

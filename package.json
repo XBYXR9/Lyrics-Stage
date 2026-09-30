@@ -1,7 +1,7 @@
 {
   "name": "spotify-lyrics-stage",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "description": "Apple Music-style animated lyrics for Spotify — a desktop app that follows the Spotify app (Automix included), plus a web version.",
   "scripts": {
@@ -22,6 +22,7 @@
     "dbus-next": "^0.10.2",
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
     "esbuild": "^0.28.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -45,6 +46,14 @@
     "appId": "io.github.xbyxr9.lyricsstage",
     "productName": "Lyrics Stage",
     "artifactName": "Lyrics-Stage-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "XBYXR9",
+        "repo": "Lyrics-Stage"
+      }
+    ],
+    "electronUpdaterCompatibility": ">=2.16",
     "directories": {
       "output": "release",
       "buildResources": "build"
