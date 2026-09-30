@@ -26,6 +26,18 @@ function waitFor(check: () => boolean, ms: number, what: string): Promise<void> 
   });
 }
 
+/**
+ * PowerShell's error output minus harmless notes: when its output goes to
+ * another program, it wraps everything in "#< CLIXML" XML and may add progress
+ * messages like "Preparing modules for first use.". Real errors are kept.
+ */
+function powerShellErrors(stderr: string): string {
+  return stderr
+    .replace(/#< CLIXML\r?\n?/g, '')
+    .replace(/<Objs\b[\s\S]*?<\/Objs>/g, (block) => (/S="Error"/.test(block) ? block : ''))
+    .trim();
+}
+
 describe.runIf(process.platform === 'win32')('Windows media-controls script (real PowerShell)', () => {
   it('starts, reports its state as JSON and answers commands', async () => {
     const ps = spawn(
@@ -39,16 +51,18 @@ describe.runIf(process.platform === 'win32')('Windows media-controls script (rea
     ps.stdout.on('data', splitJsonLines((o) => lines.push(o as Line)));
     ps.stderr.setEncoding('utf8');
     ps.stderr.on('data', (d: string) => (stderr += d));
+    const withOutput = (err: Error) => {
+      throw new Error(`${err.message}. PowerShell said: ${stderr || '(nothing)'}`);
+    };
     try {
-      await waitFor(() => lines.some((l) => 'running' in l) || stderr.length > 0, 30000, 'a state line');
-      expect(stderr).toBe('');
+      await waitFor(() => lines.some((l) => 'running' in l), 30000, 'a state line').catch(withOutput);
       const state = lines.find((l) => 'running' in l)!;
       expect(state.error).toBeUndefined();
       expect(typeof state.at).toBe('number');
       // No Spotify on the test machine, so the command can't succeed — but it must get an answer.
       ps.stdin.write(JSON.stringify({ type: 'playpause', id: 7 }) + '\n');
-      await waitFor(() => lines.some((l) => l.reply === 7), 15000, 'a reply to the command');
-      expect(stderr).toBe('');
+      await waitFor(() => lines.some((l) => l.reply === 7), 15000, 'a reply to the command').catch(withOutput);
+      expect(powerShellErrors(stderr)).toBe('');
     } finally {
       ps.kill();
     }

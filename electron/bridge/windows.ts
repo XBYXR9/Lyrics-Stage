@@ -8,6 +8,8 @@ import type { DesktopCommand, SpotifyBridge } from './types';
 
 export const SMTC_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
+# No "Preparing modules for first use." progress notes on the error output.
+$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
