@@ -21,6 +21,7 @@ export function friendlyError(err: unknown): string {
   if (err instanceof SpotifyError) {
     if (err.reason === 'NO_ACTIVE_DEVICE' || err.status === 404)
       return 'No active Spotify device. Open Spotify on any device (or press "Play here").';
+    if (err.reason === 'VOLUME_CONTROL_DISALLOW') return 'This Spotify device doesn’t let apps change its volume.';
     if (err.reason === 'PREMIUM_REQUIRED' || err.status === 403)
       return 'Spotify only allows controlling playback with a Premium account.';
     if (err.status === 401) return 'Your Spotify login expired. Please connect again.';
@@ -157,6 +158,9 @@ export const spotify = {
     request('/me/player/seek', { method: 'PUT', query: { position_ms: Math.max(0, Math.round(positionMs)) } }),
 
   queue: (uri: string) => request('/me/player/queue', { method: 'POST', query: { uri } }),
+
+  /** Needs Premium, and a device that allows volume control. */
+  volume: (percent: number) => request('/me/player/volume', { method: 'PUT', query: { volume_percent: Math.round(percent) } }),
 
   transfer: (deviceId: string, play = true) =>
     request('/me/player', { method: 'PUT', body: { device_ids: [deviceId], play } }),

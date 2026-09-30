@@ -61,6 +61,8 @@ export interface EngineState {
   authExpired: boolean;
   /** Desktop app only: status of the linked Spotify app. */
   spotifyApp: SpotifyAppStatus | null;
+  /** Spotify's volume (0–100), or null while we don't know it. */
+  volume: number | null;
 }
 
 export type EngineKind = 'web-api' | 'desktop' | 'demo';
@@ -86,6 +88,8 @@ export interface Engine {
   listDevices(): Promise<DeviceInfo[]>;
   transferTo(deviceId: string): Promise<void>;
   enableBrowserPlayer(): Promise<void>;
+  /** Turns Spotify up (+) or down (−) by this many percentage points. */
+  changeVolume(delta: number): Promise<void>;
   /** The cover picture at this address didn't load; find another one if possible. */
   coverFailed?(url: string): void;
 }
@@ -112,8 +116,12 @@ export function initialEngineState(): EngineState {
     problem: null,
     authExpired: false,
     spotifyApp: null,
+    volume: null,
   };
 }
+
+/** Keeps a volume within 0–100. */
+export const clampVolume = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
 
 /** Shared bits for all engines: state, listeners and song-change detection. */
 export abstract class BaseEngine {
@@ -324,7 +332,28 @@ export class SpotifyEngine extends BaseEngine implements Engine {
       return;
     }
     this.observe(toTrackInfo(res.item), res.progress_ms ?? 0, res.is_playing, measuredAt);
-    this.update({ device });
+    this.update({ device, volume: this.volumeSettling() ? this.state.volume : res.device.volume_percent });
+  }
+
+  /** Just after a volume change, Spotify can still report the old level for a moment. */
+  private volumeChangedAt = 0;
+  private volumeSettling() {
+    return performance.now() - this.volumeChangedAt < 3000;
+  }
+
+  async changeVolume(delta: number) {
+    const before = this.state.volume;
+    const volume = clampVolume((before ?? 50) + delta);
+    this.volumeChangedAt = performance.now();
+    this.update({ volume });
+    try {
+      if (this.sdkActive && this.player) await this.player.setVolume(volume / 100);
+      else await spotify.volume(volume);
+    } catch (err) {
+      this.volumeChangedAt = 0;
+      this.update({ volume: before });
+      throw err;
+    }
   }
 
   /** Look at the queue so the next song's lyrics & colors are ready before it starts. */

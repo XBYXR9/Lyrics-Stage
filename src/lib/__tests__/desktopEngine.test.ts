@@ -167,6 +167,24 @@ describe('DesktopEngine', () => {
     expect(finder).toHaveBeenCalledTimes(1);
   });
 
+  it('changes the volume and shows the level Spotify reports', async () => {
+    const { api, emit, sent } = fakeApi();
+    api.command = async (c) => {
+      sent.push(c);
+      return { ok: true, volume: 40 };
+    };
+    const engine = new DesktopEngine(api, async () => null);
+    engine.start();
+    emit(snap({ volume: 50 }));
+    expect(engine.getState().volume).toBe(50);
+    await engine.changeVolume(-10);
+    expect(sent).toContainEqual({ type: 'volume', delta: -10 });
+    expect(engine.getState().volume).toBe(40);
+    // A late snapshot with the old level doesn't undo the change.
+    emit(snap({ volume: 50, positionMs: 250 }));
+    expect(engine.getState().volume).toBe(40);
+  });
+
   it('turns failed commands into errors', async () => {
     const { api } = fakeApi();
     api.command = async () => ({ ok: false, error: 'Nope' });

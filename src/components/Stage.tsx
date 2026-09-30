@@ -14,7 +14,7 @@ import { analyzeVibe } from '../lib/vibe';
 import { Background } from './Background';
 import { ExpandIcon, LyricsIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
 import { LyricsStage } from './LyricsStage';
-import { NowPlaying } from './NowPlaying';
+import { NowPlaying, VOLUME_STEP } from './NowPlaying';
 import { SearchPanel } from './SearchPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { STYLES, styleName } from './styles';
@@ -111,6 +111,19 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
         case 'y':
           cycleStyle();
           break;
+        case '-':
+        case '=':
+        case '+': {
+          const delta = e.key === '-' ? -VOLUME_STEP : VOLUME_STEP;
+          void engine
+            .changeVolume(delta)
+            .then(() => {
+              const v = engine.getState().volume;
+              if (v !== null) toast(`Spotify volume ${v}%`);
+            })
+            .catch((err) => toast(friendlyError(err), 'error'));
+          break;
+        }
         case '[':
         case ']': {
           const offsetMs = getSettings().offsetMs + (e.key === ']' ? 100 : -100);

@@ -31,6 +31,8 @@ export interface DesktopSnapshot {
   canSeek: boolean;
   /** A problem the user can fix, in plain words. */
   problem?: string;
+  /** Spotify's volume (0–100), when the system interface reports it (macOS, Linux). */
+  volume?: number | null;
 }
 
 export type DesktopCommand =
@@ -40,11 +42,15 @@ export type DesktopCommand =
   | { type: 'next' }
   | { type: 'previous' }
   | { type: 'seek'; positionMs: number }
-  | { type: 'openUri'; uri: string };
+  | { type: 'openUri'; uri: string }
+  /** Turn Spotify up (+) or down (−) by this many percentage points. */
+  | { type: 'volume'; delta: number };
 
 export interface CommandResult {
   ok: boolean;
   error?: string;
+  /** Spotify's volume (0–100) after a volume command, when known. */
+  volume?: number;
 }
 
 /** What the desktop app's preload script exposes as `window.lyricsStage`. */
@@ -80,6 +86,10 @@ export function validateCommand(c: unknown): DesktopCommand | null {
     }
     case 'openUri':
       return typeof cmd.uri === 'string' && SPOTIFY_URI_RE.test(cmd.uri) ? { type: 'openUri', uri: cmd.uri } : null;
+    case 'volume': {
+      const delta = Number(cmd.delta);
+      return Number.isFinite(delta) && Math.abs(delta) <= 100 ? { type: 'volume', delta: Math.round(delta) } : null;
+    }
     default:
       return null;
   }

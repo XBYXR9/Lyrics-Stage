@@ -8,7 +8,13 @@ export interface SpotifyBridge {
   start(onSnapshot: (s: DesktopSnapshot) => void): void;
   stop(): void;
   /** Throws a plain-language error if Spotify didn't accept the command. */
-  command(c: DesktopCommand): Promise<void>;
+  command(c: DesktopCommand): Promise<CommandReply | void>;
+}
+
+/** Extra details a command can answer with. */
+export interface CommandReply {
+  /** Spotify's volume (0–100) after a volume change. */
+  volume?: number;
 }
 
 export type { DesktopCommand, DesktopSnapshot };

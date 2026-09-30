@@ -43,6 +43,13 @@ describe('macOS (AppleScript)', () => {
     );
   });
 
+  it('reads and changes Spotify’s volume', () => {
+    expect(parseMacLine({ running: true, state: 'paused', volume: 64, track: null }).volume).toBe(64);
+    const script = macCommandScript({ type: 'volume', delta: -10 });
+    expect(script).toContain('set v to (sound volume) + (-10)');
+    expect(script.split('\n')[0]).toBe('tell application "Spotify"');
+  });
+
   it('has no template placeholders left in the JXA loop', () => {
     expect(JXA_LOOP).not.toContain('${');
     expect(JXA_LOOP).toContain("Application('Spotify')");
@@ -99,6 +106,8 @@ describe('Windows (media controls)', () => {
     expect(Buffer.from(enc, 'base64').toString('utf16le')).toBe('Write-Output 1');
     expect(SMTC_SCRIPT).toContain("ParameterType.Name -eq 'IAsyncOperation`1'");
     expect(SMTC_SCRIPT).not.toContain('${');
+    // The C# volume helper sits in a PowerShell here-string, whose end marker must start a line.
+    expect(SMTC_SCRIPT).toMatch(/\n'@\n/);
   });
 });
 
@@ -118,6 +127,8 @@ describe('Linux (MPRIS)', () => {
       }),
     });
     expect(state.playing).toBe(true);
+    expect(state.volume).toBeNull();
+    expect(parseMpris({ PlaybackStatus: v('Paused'), Volume: v(0.456) }).volume).toBe(46);
     expect(state.trackId).toBe('/com/spotify/track/3AJwUDP919kvQ9QcozQPxg');
     expect(state.track).toEqual({
       uri: 'spotify:track:3AJwUDP919kvQ9QcozQPxg',
@@ -149,6 +160,9 @@ describe('command validation (from the page)', () => {
     expect(validateCommand({ type: 'openUri', uri: 'spotify:track:abc123DEF456' })).not.toBeNull();
     expect(validateCommand({ type: 'openUri', uri: 'spotify:track:x" & do shell script "rm' })).toBeNull();
     expect(validateCommand({ type: 'openUri', uri: 'https://evil.example' })).toBeNull();
+    expect(validateCommand({ type: 'volume', delta: 10.4 })).toEqual({ type: 'volume', delta: 10 });
+    expect(validateCommand({ type: 'volume', delta: '5; rm' })).toBeNull();
+    expect(validateCommand({ type: 'volume', delta: 1000 })).toBeNull();
     expect(validateCommand({ type: 'rm -rf' })).toBeNull();
     expect(validateCommand(null)).toBeNull();
   });

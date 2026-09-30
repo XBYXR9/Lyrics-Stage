@@ -9,7 +9,7 @@
 
 import { findCover, type CoverQuery } from './cover';
 import type { DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi } from './desktopTypes';
-import { BaseEngine, type DeviceInfo, type Engine, type SpotifyAppStatus } from './engine';
+import { BaseEngine, clampVolume, type DeviceInfo, type Engine, type SpotifyAppStatus } from './engine';
 import type { TrackInfo } from './types';
 
 /** How long to wait before trying a cover lookup again for the same song. */
@@ -91,6 +91,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
       if (!sameStatus(this.state.spotifyApp, spotifyApp)) p.spotifyApp = spotifyApp;
       if (this.state.problem !== (s.problem ?? null)) p.problem = s.problem ?? null;
       if (this.state.device !== SPOTIFY_APP_DEVICE) p.device = SPOTIFY_APP_DEVICE;
+      if (typeof s.volume === 'number' && s.volume !== this.state.volume && !this.volumeSettling()) p.volume = s.volume;
       return p;
     };
 
@@ -165,6 +166,26 @@ export class DesktopEngine extends BaseEngine implements Engine {
   private async send(c: DesktopCommand) {
     const res = await this.api.command(c);
     if (!res.ok) throw new Error(res.error ?? 'Spotify didn’t respond. Is the Spotify app open?');
+    return res;
+  }
+
+  /** Just after a volume change, the player can still report the old level for a moment. */
+  private volumeChangedAt = -Infinity;
+  private volumeSettling() {
+    return performance.now() - this.volumeChangedAt < 1500;
+  }
+
+  async changeVolume(delta: number) {
+    const before = this.state.volume;
+    if (before !== null) this.update({ volume: clampVolume(before + delta) });
+    this.volumeChangedAt = performance.now();
+    try {
+      const res = await this.send({ type: 'volume', delta });
+      if (typeof res.volume === 'number') this.update({ volume: clampVolume(res.volume) });
+    } catch (err) {
+      this.update({ volume: before });
+      throw err;
+    }
   }
 
   async togglePlay() {
@@ -174,12 +195,12 @@ export class DesktopEngine extends BaseEngine implements Engine {
     await this.send({ type: 'playpause' });
   }
 
-  next() {
-    return this.send({ type: 'next' });
+  async next() {
+    await this.send({ type: 'next' });
   }
 
-  previous() {
-    return this.send({ type: 'previous' });
+  async previous() {
+    await this.send({ type: 'previous' });
   }
 
   async seek(positionMs: number) {
@@ -188,8 +209,8 @@ export class DesktopEngine extends BaseEngine implements Engine {
     await this.send({ type: 'seek', positionMs });
   }
 
-  playTrack(uri: string) {
-    return this.send({ type: 'openUri', uri });
+  async playTrack(uri: string) {
+    await this.send({ type: 'openUri', uri });
   }
 
   async addToQueue() {

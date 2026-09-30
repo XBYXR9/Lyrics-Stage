@@ -434,6 +434,33 @@ kbd {
   justify-content: center;
   gap: 28px;
 }
+.np-volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(260px, 100%);
+  margin: -4px auto 0;
+}
+.np-volume .icon-btn.small {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  color: var(--text-dim);
+}
+.np-volume .icon-btn.small:hover {
+  color: #fff;
+}
+.vol-bar {
+  flex: 1;
+  min-width: 0;
+}
+.vol-bar .bar-fill {
+  transition: transform 0.2s ease;
+}
+.vol-bar.unknown {
+  cursor: default;
+  opacity: 0.45;
+}
 
 .devices {
   position: relative;
@@ -1142,6 +1169,7 @@ kbd {
     grid-area: progress;
   }
   .np-times,
+  .np-volume,
   .devices {
     display: none;
   }

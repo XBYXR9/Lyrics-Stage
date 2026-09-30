@@ -91,3 +91,16 @@ export const QueueIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M4 6h12M4 12h12M4 18h7M17 15v6M14 18h6" />
   </svg>
 );
+const Speaker = () => <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4Z" fill="currentColor" />;
+export const VolumeDownIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <Speaker />
+    <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />
+  </svg>
+);
+export const VolumeUpIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <Speaker />
+    <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18.5 6.5a7.5 7.5 0 0 1 0 11" />
+  </svg>
+);

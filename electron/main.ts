@@ -58,8 +58,8 @@ ipcMain.handle('ls:command', async (_event, raw: unknown) => {
   const cmd = validateCommand(raw);
   if (!cmd) return { ok: false, error: 'Unknown command.' };
   try {
-    await bridge.command(cmd);
-    return { ok: true };
+    const reply = await bridge.command(cmd);
+    return { ok: true, ...(reply ?? {}) };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

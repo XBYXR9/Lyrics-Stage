@@ -6,7 +6,7 @@
 // song. If a player ever reports a real position, we switch to trusting it.
 import * as dbus from 'dbus-next';
 import type { DesktopSnapshot, DesktopTrack } from '../../src/lib/desktopTypes';
-import type { DesktopCommand, SpotifyBridge } from './types';
+import type { CommandReply, DesktopCommand, SpotifyBridge } from './types';
 
 const PLAYER_IFACE = 'org.mpris.MediaPlayer2.Player';
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
@@ -31,6 +31,8 @@ export function normalizeArtUrl(url: unknown): string | null {
 
 export interface MprisState {
   playing: boolean;
+  /** 0–100, or null when the player doesn't say. */
+  volume: number | null;
   track: DesktopTrack | null;
   /** Raw MPRIS track id (needed to seek). */
   trackId: string | null;
@@ -43,8 +45,10 @@ export function parseMpris(all: Record<string, VariantLike>): MprisState {
   const title = typeof md['xesam:title']?.value === 'string' ? (md['xesam:title']!.value as string) : '';
   const artists = md['xesam:artist']?.value;
   const trackId = typeof md['mpris:trackid']?.value === 'string' ? (md['mpris:trackid']!.value as string) : null;
+  const volume = all.Volume?.value;
   return {
     playing: all.PlaybackStatus?.value === 'Playing',
+    volume: typeof volume === 'number' && Number.isFinite(volume) ? Math.round(Math.min(1, Math.max(0, volume)) * 100) : null,
     trackId,
     positionMs: num(all.Position?.value) / 1000,
     track: title
@@ -151,6 +155,7 @@ export class LinuxBridge implements SpotifyBridge {
         playing: state.playing,
         track: state.track,
         positionMs: this.positionWorks ? state.positionMs : null,
+        volume: state.volume,
         at,
       };
     } catch (err) {
@@ -160,7 +165,7 @@ export class LinuxBridge implements SpotifyBridge {
     }
   }
 
-  async command(c: DesktopCommand) {
+  async command(c: DesktopCommand): Promise<CommandReply | void> {
     if (!(await this.connect().catch(() => false)) || !this.player) {
       throw new Error('Spotify didn’t respond. Is the Spotify app open?');
     }
@@ -185,6 +190,12 @@ export class LinuxBridge implements SpotifyBridge {
       }
       case 'openUri':
         return p.OpenUri(c.uri);
+      case 'volume': {
+        const now = parseMpris((await this.props!.GetAll(PLAYER_IFACE)) as Record<string, VariantLike>);
+        const volume = Math.min(100, Math.max(0, (now.volume ?? 50) + c.delta));
+        await this.props!.Set(PLAYER_IFACE, 'Volume', new dbus.Variant('d', volume / 100));
+        return { volume };
+      }
     }
   }
 }
