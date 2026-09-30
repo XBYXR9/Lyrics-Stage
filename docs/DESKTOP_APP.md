@@ -16,7 +16,8 @@ The desktop app is the easiest way to use Lyrics Stage:
 | --- | --- |
 | macOS (Apple silicon) | `Lyrics-Stage-…-mac-arm64.dmg` |
 | macOS (Intel) | `Lyrics-Stage-…-mac-x64.dmg` |
-| Windows | `Lyrics-Stage-…-win-x64.exe` |
+| Windows (most PCs: Intel/AMD) | `Lyrics-Stage-…-win-x64.exe` |
+| Windows on ARM (Snapdragon, Surface Pro X…) | `Lyrics-Stage-…-win-arm64.exe` |
 | Linux | `Lyrics-Stage-…-linux-x86_64.AppImage` or `.deb` |
 
 The installers aren't code-signed yet, so your system may warn you the first time:
