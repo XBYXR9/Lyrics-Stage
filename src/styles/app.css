@@ -265,6 +265,27 @@ kbd {
 .topbar .spacer {
   flex: 1;
 }
+
+/* Fullscreen: the buttons (and the pointer) fade out slowly while you just
+   watch the lyrics, and come back quickly when you move the mouse. */
+.np-controls,
+.np-volume,
+.devices {
+  transition: opacity 0.2s ease;
+}
+.controls-hidden .topbar .icon-btn,
+.controls-hidden .topbar .style-btn,
+.controls-hidden .np-controls,
+.controls-hidden .np-volume,
+.controls-hidden .devices {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+}
+.controls-hidden,
+.controls-hidden * {
+  cursor: none !important;
+}
 .lo-caption {
   font-size: 14px;
   font-weight: 600;
@@ -288,7 +309,9 @@ kbd {
   font-weight: 600;
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
-  transition: background 0.2s;
+  transition:
+    background 0.2s,
+    opacity 0.2s;
   white-space: nowrap;
 }
 .style-btn:hover {

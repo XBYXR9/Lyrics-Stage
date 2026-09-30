@@ -59,7 +59,11 @@ badge and crossfades the lyrics for exactly as long as the songs overlap.
 | Play / pause / next / previous | ✅ | ✅ | ✅ |
 | Seek (click the bar or a lyric line) | ✅ | ✅ if Spotify allows it | ✅ |
 | Search | opens in Spotify | opens in Spotify | opens in Spotify |
+| Spotify volume (− / +) | ✅ | ✅ through Windows' Volume Mixer | ⚠️ depends on the Spotify version |
 | Automix / Crossfade blends | ✅ | ✅ | ✅ |
+
+**Windows volume note:** Windows' media controls have no volume, so the volume buttons move Spotify's slider in
+Windows' **Volume Mixer** (not the slider inside Spotify). The first press takes a second while a small helper starts.
 
 **Linux note:** Spotify's Linux app doesn't share the song position (a
 [long-standing Spotify limitation](https://community.spotify.com/t5/Desktop-Linux/MPRIS-properties-Volume-and-Position-are-not-populated/m-p/4476449/highlight/true)).
@@ -82,8 +86,13 @@ Each bridge sends a *snapshot* (song, playing or paused, position, time taken) a
 (`src/lib/desktopEngine.ts`). The page runs the same Automix detection as the web version.
 
 Lyrics still come from [LRCLIB](https://lrclib.net), and the only other network requests are for fonts and album covers.
-If the Spotify app doesn't share a song's cover (it sometimes doesn't on Windows), the app looks it up by artist and
-title with Apple's free [iTunes Search API](https://performance-partners.apple.com/search-api) (`src/lib/cover.ts`).
+If the Spotify app doesn't share a song's cover (it sometimes doesn't on Windows), or the picture doesn't load, the app
+looks it up with Apple's free [iTunes Search API](https://performance-partners.apple.com/search-api): first the song by
+artist and title, then its album (`src/lib/cover.ts`).
+
+On Windows, when the song changes, Spotify can leave the previous song's position and length in the media controls
+for a moment. The app spots this (the timeline was last updated before the song changed) and counts from the song
+change until Spotify catches up.
 
 ## Developing the app
 

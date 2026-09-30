@@ -29,12 +29,65 @@ function toggleFullscreen() {
   else void document.documentElement.requestFullscreen?.().catch(() => {});
 }
 
+/** In fullscreen, the buttons fade out after this long without mouse, touch or keyboard use. */
+const HIDE_CONTROLS_AFTER_MS = 2500;
+
+/** Page fullscreen (F) or the window's own fullscreen (e.g. the desktop app's green button on macOS). */
+const isFullscreen = () =>
+  !!document.fullscreenElement || (window.innerWidth >= screen.width && window.innerHeight >= screen.height);
+
+/**
+ * True while the buttons should be hidden: in fullscreen, after a few idle
+ * seconds, unless a panel is open or the pointer rests on the controls.
+ */
+function useHideControlsInFullscreen(keepVisible: boolean): boolean {
+  const [fullscreen, setFullscreen] = useState(false);
+  const [idle, setIdle] = useState(false);
+
+  useEffect(() => {
+    const check = () => setFullscreen(isFullscreen());
+    check();
+    document.addEventListener('fullscreenchange', check);
+    window.addEventListener('resize', check);
+    return () => {
+      document.removeEventListener('fullscreenchange', check);
+      window.removeEventListener('resize', check);
+    };
+  }, []);
+
+  useEffect(() => {
+    setIdle(false);
+    if (!fullscreen || keepVisible) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let overControls = false;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => (overControls ? arm() : setIdle(true)), HIDE_CONTROLS_AFTER_MS);
+    };
+    const wake = (e: Event) => {
+      overControls = !!(e.target as Element | null)?.closest?.('.topbar button, .np');
+      setIdle(false);
+      arm();
+    };
+    const events = ['mousemove', 'pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
+    events.forEach((name) => window.addEventListener(name, wake, { passive: true }));
+    arm();
+    return () => {
+      clearTimeout(timer);
+      events.forEach((name) => window.removeEventListener(name, wake));
+    };
+  }, [fullscreen, keepVisible]);
+
+  return fullscreen && idle && !keepVisible;
+}
+
 export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut: () => void; onDemo?: () => void }) {
   const state = useEngineState(engine);
   const settings = useSettings();
   const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
   const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
+  const hideControls = useHideControlsInFullscreen(panel !== null);
 
   const { palette, ready } = usePalette(track?.artUrl);
   const { lyrics } = useLyrics(track);
@@ -216,7 +269,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
     <div
       className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
         track ? '' : ' no-track'
-      }`}
+      }${hideControls ? ' controls-hidden' : ''}`}
       style={stageStyle}
     >
       <Background

@@ -191,10 +191,12 @@ export class LinuxBridge implements SpotifyBridge {
       case 'openUri':
         return p.OpenUri(c.uri);
       case 'volume': {
-        const now = parseMpris((await this.props!.GetAll(PLAYER_IFACE)) as Record<string, VariantLike>);
-        const volume = Math.min(100, Math.max(0, (now.volume ?? 50) + c.delta));
-        await this.props!.Set(PLAYER_IFACE, 'Volume', new dbus.Variant('d', volume / 100));
-        return { volume };
+        // Some Spotify versions don't report (or ignore) the volume over MPRIS, so read back what really happened.
+        const read = async () => parseMpris((await this.props!.GetAll(PLAYER_IFACE)) as Record<string, VariantLike>).volume;
+        const target = Math.min(100, Math.max(0, ((await read()) ?? 50) + c.delta));
+        await this.props!.Set(PLAYER_IFACE, 'Volume', new dbus.Variant('d', target / 100));
+        const volume = await read();
+        return volume === null ? {} : { volume };
       }
     }
   }
