@@ -1184,3 +1184,38 @@ kbd {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ---------- Desktop app ---------- */
+/* The top bar doubles as the window's drag handle. */
+.is-desktop .topbar {
+  -webkit-app-region: drag;
+}
+.is-desktop .topbar button,
+.is-desktop .topbar .pill {
+  -webkit-app-region: no-drag;
+}
+/* Leave room for the macOS window buttons (traffic lights). */
+.platform-darwin .topbar {
+  padding-left: 88px;
+}
+.device-btn.static {
+  cursor: default;
+}
+.device-btn.static:hover {
+  background: none;
+  color: var(--text-dim);
+}
+.panel-short {
+  bottom: auto;
+}
+.panel-short .results {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 18px;
+}
+.link.inline {
+  display: inline;
+  padding: 0;
+  font-size: inherit;
+  color: #fff;
+}

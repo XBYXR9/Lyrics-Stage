@@ -95,19 +95,30 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
   return (await res.json()) as T;
 }
 
+/**
+ * First artist from a combined string like "A, B" (the Spotify app joins
+ * artists with commas). Only commas are split — "Simon & Garfunkel" is one artist.
+ */
+export function primaryArtist(artist: string): string {
+  return artist.split(/,\s+/)[0]?.trim() || artist;
+}
+
 async function lookup(track: TrackInfo, signal?: AbortSignal): Promise<Lyrics> {
-  const artist = track.artists[0] ?? '';
+  const fullArtist = track.artists[0] ?? '';
+  const artist = primaryArtist(fullArtist);
   const durationSec = Math.round(track.durationMs / 1000);
   const title = cleanTitle(track.name) || track.name;
 
-  // 1. Exact match (fast, cached by LRCLIB).
+  // 1. Exact match (fast, cached by LRCLIB). Try the full artist string, then the first artist.
   if (track.album) {
-    const exact = await getJson<LrclibRecord>(
-      '/get',
-      { track_name: track.name, artist_name: artist, album_name: track.album, duration: String(durationSec) },
-      signal,
-    );
-    if (exact && (exact.syncedLyrics || exact.instrumental)) return toLyrics(exact, track.durationMs);
+    for (const name of new Set([fullArtist, artist])) {
+      const exact = await getJson<LrclibRecord>(
+        '/get',
+        { track_name: track.name, artist_name: name, album_name: track.album, duration: String(durationSec) },
+        signal,
+      );
+      if (exact && (exact.syncedLyrics || exact.instrumental)) return toLyrics(exact, track.durationMs);
+    }
   }
 
   // 2. Search by cleaned title + artist, then a looser free-text search.

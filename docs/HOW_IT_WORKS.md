@@ -3,9 +3,10 @@
 This page explains the main parts of the app and how they fit together.
 
 ```
- Spotify Web API ──poll /me/player──┐
-                                    ├──► Engine ──► clock + current song + "how did the song change?"
- Web Playback SDK ──state events────┘        │
+ Spotify app (desktop) ──OS media interface──► electron/bridge ──IPC──┐
+ Spotify Web API ──poll /me/player────────────────────────────────────┤
+ Web Playback SDK ──state events──────────────────────────────────────┼─► Engine ──► clock + current song + "how did the song change?"
+ Demo songs ──fake clock──────────────────────────────────────────────┘        │
                                              ▼
  LRCLIB ──► lyrics lookup ──► parser ──► timed lines & words
  Album cover ──► color palette                │
@@ -14,7 +15,40 @@ This page explains the main parts of the app and how they fit together.
                          Stage: background · lyric layers · player panel
 ```
 
-## 1. Login (`src/lib/auth.ts`)
+There are three engines, and they all share the same song-change and Automix logic (`BaseEngine.observe` in
+`src/lib/engine.ts`):
+
+| Engine | Used by | Source |
+| --- | --- | --- |
+| `DesktopEngine` (`src/lib/desktopEngine.ts`) | the desktop app | the Spotify app on the same computer |
+| `SpotifyEngine` (`src/lib/engine.ts`) | the web version | Spotify Web API + Web Playback SDK |
+| `DemoEngine` (`src/lib/demo.ts`) | demo mode | made-up songs on a fake clock |
+
+## 0. The desktop app and the Spotify app (`electron/`)
+
+The desktop app is an Electron window showing the same page as the web version. Its main process
+(`electron/main.ts`) links it to the **Spotify app you already use**, through the system interfaces Spotify supports:
+
+- **macOS** (`bridge/mac.ts`): a small JavaScript-for-Automation loop (`osascript -l JavaScript`) reads
+  `playerState`, `playerPosition` and `currentTrack` four times a second. Commands are one-line AppleScripts
+  (`playpause`, `next track`, `set player position to …`). macOS asks the user once for permission (Automation).
+- **Windows** (`bridge/windows.ts`): a PowerShell script (built into Windows) uses
+  `GlobalSystemMediaTransportControlsSessionManager` (the "media controls" API) to read the title, artist, timeline
+  and cover of the Spotify session. The position is extrapolated from `LastUpdatedTime`. Commands go to the same script
+  through its input, one JSON line each.
+- **Linux** (`bridge/linux.ts`): MPRIS over the D-Bus session bus, using `dbus-next`. Spotify's Linux app always reports
+  position 0, so the bridge sends `positionMs: null`. The page then counts time from the start of each song, and
+  treats a seek from the app as a fresh sync point.
+
+Each bridge turns its answers into a `DesktopSnapshot` (`src/lib/desktopTypes.ts`): running, playing, track, position,
+and the time it was taken. Snapshots go to the page over IPC. The page's API (`window.lyricsStage`, from
+`electron/preload.ts`) is deliberately small: listen to snapshots, send a command, open Spotify, keep the window on top.
+Every command is checked in the main process (`validateCommand`) before it reaches AppleScript, PowerShell or D-Bus.
+
+Because the music plays in Spotify itself, **Spotify's Automix and Crossfade apply**, and the page detects the blends
+from the timing, exactly as described in section 4.
+
+## 1. Login — web version (`src/lib/auth.ts`)
 
 The app uses Spotify's **Authorization Code with PKCE** flow. Because PKCE doesn't need a client secret, everything runs
 in the browser and no server is required. Tokens are saved in `localStorage` and refreshed automatically.
@@ -22,7 +56,7 @@ in the browser and no server is required. Tokens are saved in `localStorage` and
 Spotify only accepts loopback **IP addresses** such as `127.0.0.1` as local redirect URIs, not `localhost`. For that
 reason the dev server listens on `127.0.0.1:5173`, and `main.tsx` redirects `localhost` there.
 
-## 2. Following playback (`src/lib/engine.ts`)
+## 2. Following playback — web version (`src/lib/engine.ts`)
 
 The **engine** keeps track of what's playing and gets its information from two sources:
 

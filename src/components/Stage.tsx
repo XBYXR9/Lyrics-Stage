@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useEngineState, useLyrics, usePalette } from '../hooks/hooks';
 import { startLogin } from '../lib/auth';
-import type { Engine } from '../lib/engine';
+import { desktopApi } from '../lib/desktopTypes';
+import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
@@ -28,7 +29,7 @@ function toggleFullscreen() {
   else void document.documentElement.requestFullscreen?.().catch(() => {});
 }
 
-export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => void }) {
+export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut: () => void; onDemo?: () => void }) {
   const state = useEngineState(engine);
   const settings = useSettings();
   const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
@@ -138,6 +139,12 @@ export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => 
   };
 
   const currentStyle = settings.style === 'auto' ? vibe?.autoStyle ?? 'apple' : settings.style;
+  const desktop = engine.kind === 'desktop' ? desktopApi() : null;
+
+  // Desktop app: keep the window above others if the user wants a lyrics "mini player".
+  useEffect(() => {
+    void desktop?.setAlwaysOnTop(settings.alwaysOnTop);
+  }, [desktop, settings.alwaysOnTop]);
 
   let content;
   if (!track && state.status === 'connecting') {
@@ -147,6 +154,8 @@ export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => 
         <div className="msg-title">Connecting to Spotify…</div>
       </div>
     );
+  } else if (!track && engine.kind === 'desktop') {
+    content = <DesktopIdle app={state.spotifyApp} onDemo={onDemo} />;
   } else if (!track) {
     content = (
       <div className="msg idle">
@@ -184,7 +193,7 @@ export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => 
 
   return (
     <div
-      className={`stage current-${currentStyle}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
+      className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
         track ? '' : ' no-track'
       }`}
       style={stageStyle}
@@ -215,6 +224,14 @@ export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => 
       <header className="topbar">
         {engine.isDemo && <span className="pill hide-mobile">Demo · no sound</span>}
         {state.problem && !state.authExpired && <span className="pill warn">{state.problem}</span>}
+        {desktop && track && state.spotifyApp && !state.spotifyApp.running && (
+          <span className="pill warn">Spotify is closed</span>
+        )}
+        {desktop && track && state.spotifyApp?.running && !state.spotifyApp.exactPosition && (
+          <span className="pill hide-mobile" title="Spotify's Linux app doesn't share the song position, so timing starts when each song starts. Tap a lyric line to sync.">
+            Timing estimated · tap a line to sync
+          </span>
+        )}
         {settings.lyricsOnly && track && (
           <span className="lo-caption">
             {track.name} · {track.artists.join(', ')}
@@ -261,7 +278,7 @@ export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => 
           settings={settings}
           vibe={vibe}
           typicalBlendMs={state.typicalBlendMs}
-          isDemo={engine.isDemo}
+          engineKind={engine.kind}
           onClose={() => setPanel(null)}
           onSignOut={onSignOut}
         />
@@ -279,6 +296,36 @@ export function Stage({ engine, onSignOut }: { engine: Engine; onSignOut: () => 
         </div>
       )}
       <Toasts />
+    </div>
+  );
+}
+
+/** What the desktop app shows while nothing is playing in the Spotify app. */
+function DesktopIdle({ app, onDemo }: { app: SpotifyAppStatus | null; onDemo?: () => void }) {
+  const open = () => void desktopApi()?.openSpotify();
+  let title = 'Play something in Spotify';
+  let sub = 'Your lyrics show up here as soon as a song starts. Turn on Automix in Spotify (Settings → Playback) and the lyrics blend right along with it.';
+  if (app?.problem) {
+    title = 'One more step';
+    sub = app.problem;
+  } else if (!app?.running) {
+    title = 'Open Spotify to start';
+    sub = 'Log in to the Spotify app the usual way and play a song. Lyrics Stage follows along — no extra login needed.';
+  }
+  return (
+    <div className="msg idle">
+      <div className="msg-title big">{title}</div>
+      <div className="msg-sub">{sub}</div>
+      <div className="msg-actions">
+        <button className="btn primary" onClick={open}>
+          Open Spotify
+        </button>
+        {onDemo && (
+          <button className="btn ghost" onClick={onDemo}>
+            Try the demo
+          </button>
+        )}
+      </div>
     </div>
   );
 }

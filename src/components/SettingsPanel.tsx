@@ -1,5 +1,7 @@
 // Settings: lyric style, timing, text size, background and Automix blending.
 import type { ReactNode } from 'react';
+import { desktopApi } from '../lib/desktopTypes';
+import type { EngineKind } from '../lib/engine';
 import { updateSettings, type Settings } from '../lib/settings';
 import type { StyleChoice, Vibe } from '../lib/types';
 import { CloseIcon } from './Icons';
@@ -9,14 +11,14 @@ export function SettingsPanel({
   settings,
   vibe,
   typicalBlendMs,
-  isDemo,
+  engineKind,
   onClose,
   onSignOut,
 }: {
   settings: Settings;
   vibe: Vibe | null;
   typicalBlendMs: number | null;
-  isDemo: boolean;
+  engineKind: EngineKind;
   onClose: () => void;
   onSignOut: () => void;
 }) {
@@ -140,8 +142,32 @@ export function SettingsPanel({
             overlap.
             {typicalBlendMs ? ` Your blends so far last about ${(typicalBlendMs / 1000).toFixed(1)}s.` : ''}
           </p>
+          <p className="hint">
+            <b>Turn on Automix:</b> in the Spotify app, click your profile picture → <b>Settings</b> → <b>Playback</b> →
+            switch on <b>Automix</b> (or <b>Crossfade songs</b>). Needs Spotify Premium; Automix works on select
+            playlists.
+            {engineKind === 'desktop' && (
+              <>
+                {' '}
+                <button className="link inline" onClick={() => void desktopApi()?.openSpotify()}>
+                  Open Spotify
+                </button>
+              </>
+            )}
+          </p>
           <Toggle checked={settings.reduceMotion} onChange={(v) => set({ reduceMotion: v })} label="Reduce motion" />
         </Section>
+
+        {engineKind === 'desktop' && (
+          <Section title="Window">
+            <Toggle
+              checked={settings.alwaysOnTop}
+              onChange={(v) => set({ alwaysOnTop: v })}
+              label="Keep on top of other windows"
+            />
+            <p className="hint">Handy as a small lyrics window next to your work. Press L for lyrics only.</p>
+          </Section>
+        )}
 
         <Section title="Keyboard shortcuts">
           <ul className="keys">
@@ -160,9 +186,11 @@ export function SettingsPanel({
           </ul>
         </Section>
 
-        <button className="btn ghost wide" onClick={onSignOut}>
-          {isDemo ? 'Leave the demo' : 'Disconnect Spotify'}
-        </button>
+        {engineKind !== 'desktop' && (
+          <button className="btn ghost wide" onClick={onSignOut}>
+            {engineKind === 'demo' ? 'Leave the demo' : 'Disconnect Spotify'}
+          </button>
+        )}
       </div>
     </aside>
   );

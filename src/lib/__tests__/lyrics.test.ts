@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanTitle } from '../lyrics';
+import { cleanTitle, primaryArtist } from '../lyrics';
 import { parseLrc } from '../lrc';
 import { analyzeVibe, wordsPerSecond } from '../vibe';
 
@@ -17,6 +17,15 @@ describe('cleanTitle', () => {
   ])('%s → %s', (input, expected) => {
     expect(cleanTitle(input)).toBe(expected);
   });
+});
+
+describe('primaryArtist', () => {
+  it.each([
+    ['Coldplay', 'Coldplay'],
+    ['The Kid LAROI, Justin Bieber', 'The Kid LAROI'],
+    ['Simon & Garfunkel', 'Simon & Garfunkel'],
+    ['Charli xcx', 'Charli xcx'],
+  ])('%s → %s', (input, expected) => expect(primaryArtist(input)).toBe(expected));
 });
 
 describe('vibe', () => {
