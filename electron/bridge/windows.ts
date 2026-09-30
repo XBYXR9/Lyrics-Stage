@@ -8,10 +8,13 @@ import type { DesktopCommand, SpotifyBridge } from './types';
 
 export const SMTC_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
+# No "Preparing modules for first use." progress notes on the error output.
+$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
 $null = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
+$null = [Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime]
 $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
   $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation` + '`' + String.raw`1'
 } | Select-Object -First 1
@@ -33,17 +36,34 @@ function Read-Art($props) {
   try {
     if ($null -eq $props.Thumbnail) { return $null }
     $ras = Await ($props.Thumbnail.OpenReadAsync()) $streamType
-    $stream = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($ras)
-    $ms = New-Object System.IO.MemoryStream
-    $stream.CopyTo($ms)
+    if ($null -eq $ras -or $ras.Size -eq 0) { return $null }
     $type = if ($ras.ContentType) { $ras.ContentType } else { 'image/jpeg' }
-    return "data:$type;base64," + [Convert]::ToBase64String($ms.ToArray())
+    $size = [uint32]$ras.Size
+    try {
+      # Windows' own reader (works in plain Windows PowerShell).
+      $reader = [Windows.Storage.Streams.DataReader]::new($ras.GetInputStreamAt(0))
+      $null = Await ($reader.LoadAsync($size)) ([uint32])
+      $bytes = New-Object byte[] $size
+      $reader.ReadBytes($bytes)
+      $reader.Dispose()
+    } catch {
+      # Fallback: .NET stream wrapper.
+      $stream = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($ras.GetInputStreamAt(0))
+      $ms = New-Object System.IO.MemoryStream
+      $stream.CopyTo($ms)
+      $bytes = $ms.ToArray()
+    }
+    if ($bytes.Length -eq 0) { return $null }
+    return "data:$type;base64," + [Convert]::ToBase64String($bytes)
   } catch { return $null }
 }
 
 $stdin = New-Object System.IO.StreamReader([Console]::OpenStandardInput())
 $pending = $stdin.ReadLineAsync()
 $lastKey = ''
+$sentArt = $null
+$artTries = 0
+$nextArtAt = 0
 
 while ($true) {
   if ($pending.IsCompleted) {
@@ -87,11 +107,33 @@ while ($true) {
       $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
       if ($out.playing -and $updated -gt 0 -and $now -gt $updated) { $pos += ($now - $updated) }
       $out.positionMs = $pos
+      $out.at = $now
+      # Cover: Spotify often shares the new title first and the picture a
+      # moment later (or briefly still shows the old one), so read it when the
+      # song changes and then re-check every 1.5 s: until one arrives (up to
+      # ~12 s), and twice more after that in case it was the previous song's.
       $key = "$($props.Title)|$($props.Artist)|$($props.AlbumTitle)"
-      if ($key -ne $lastKey) { $lastKey = $key; $out.art = Read-Art $props; $out.artChanged = $true }
+      if ($key -ne $lastKey) {
+        $lastKey = $key
+        $sentArt = Read-Art $props
+        $out.art = $sentArt
+        $out.artChanged = $true
+        $artTries = 1
+        $nextArtAt = $now + 1500
+      } elseif ($now -ge $nextArtAt -and (($null -eq $sentArt -and $artTries -lt 8) -or ($null -ne $sentArt -and $artTries -lt 3))) {
+        $art = Read-Art $props
+        $artTries++
+        $nextArtAt = $now + 1500
+        if ($null -ne $art -and $art -ne $sentArt) {
+          $sentArt = $art
+          $out.art = $art
+          $out.artChanged = $true
+        }
+      }
     }
   } catch { $out.error = $_.Exception.Message }
-  $out.at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  # The position above is for the moment it was read, not after the (slower) cover read.
+  if (-not $out.ContainsKey('at')) { $out.at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
   [Console]::Out.WriteLine(($out | ConvertTo-Json -Compress))
   [Console]::Out.Flush()
   Start-Sleep -Milliseconds 250

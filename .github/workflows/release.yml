@@ -18,11 +18,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - name: macos
+            os: macos-latest
             args: --mac
-          - os: windows-latest
-            args: --win
-          - os: ubuntu-latest
+          - name: windows-x64
+            os: windows-latest
+            args: --win --x64
+          # Windows on ARM (Snapdragon laptops, Surface Pro X…), built on the regular Windows runner.
+          - name: windows-arm64
+            os: windows-latest
+            args: --win --arm64
+          - name: linux
+            os: ubuntu-latest
             args: --linux
     runs-on: ${{ matrix.os }}
     steps:
@@ -40,7 +47,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
-          name: lyrics-stage-${{ matrix.os }}
+          name: lyrics-stage-${{ matrix.name }}
           path: |
             release/*.dmg
             release/*.exe

@@ -139,6 +139,7 @@ npm run typecheck  # check types
 ## Credits & license
 
 - Lyrics: [LRCLIB](https://lrclib.net), a community project. Please be kind to their servers.
+- Backup album covers (desktop app, when Spotify doesn't share one): Apple's iTunes Search API.
 - Not affiliated with, or endorsed by, Spotify or Apple. "Apple Music" describes the visual style only.
 
 [MIT](LICENSE)

@@ -112,6 +112,34 @@ describe('DesktopEngine', () => {
     await expect(engine.addToQueue()).rejects.toThrow(/Spotify app/);
   });
 
+  it('shows a cover that arrives a moment after the song change (Windows)', () => {
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api, async () => null);
+    engine.start();
+    emit(snap({ positionMs: 1000 }));
+    expect(engine.getState().track?.artUrl).toBeNull();
+    emit(snap({ positionMs: 1250, track: { ...track('Song A'), artUrl: 'data:image/jpeg;base64,AAA' } }));
+    expect(engine.getState().track?.artUrl).toBe('data:image/jpeg;base64,AAA');
+    expect(engine.getState().track?.name).toBe('Song A');
+    expect(engine.getState().change.seq).toBe(1); // still the same song, no transition
+  });
+
+  it('looks up a cover when the player gives none, once per song', async () => {
+    const { api, emit } = fakeApi();
+    const finder = vi.fn(async () => 'https://covers.example/a.jpg');
+    const engine = new DesktopEngine(api, finder);
+    engine.start();
+    emit(snap({ positionMs: 1000 }));
+    emit(snap({ positionMs: 1250 }));
+    await vi.waitFor(() => expect(engine.getState().track?.artUrl).toBe('https://covers.example/a.jpg'));
+    emit(snap({ positionMs: 1500 }));
+    expect(finder).toHaveBeenCalledTimes(1);
+    expect(finder).toHaveBeenCalledWith({ name: 'Song A', artists: ['Artist'], album: 'Album' });
+    // The player's own cover still wins if it shows up later.
+    emit(snap({ positionMs: 1750, track: { ...track('Song A'), artUrl: 'data:image/png;base64,BBB' } }));
+    expect(engine.getState().track?.artUrl).toBe('data:image/png;base64,BBB');
+  });
+
   it('turns failed commands into errors', async () => {
     const { api } = fakeApi();
     api.command = async () => ({ ok: false, error: 'Nope' });

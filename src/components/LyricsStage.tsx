@@ -33,11 +33,14 @@ function transitionLength(change: TrackChange, settings: Settings): number {
 export function LyricsStage({
   engine,
   change,
+  currentTrack,
   settings,
   onSeek,
 }: {
   engine: Engine;
   change: TrackChange;
+  /** The song playing now (its cover may arrive after the song change). */
+  currentTrack: TrackInfo | null;
   settings: Settings;
   onSeek: (ms: number) => void;
 }) {
@@ -81,15 +84,31 @@ export function LyricsStage({
   return (
     <div className="lyrics-stage">
       {layers.map((layer) => (
-        <LyricsLayer key={layer.key} layer={layer} settings={settings} onSeek={onSeek} />
+        <LyricsLayer
+          key={layer.key}
+          layer={layer}
+          artUrl={layer.track.key === currentTrack?.key ? currentTrack.artUrl : layer.track.artUrl}
+          settings={settings}
+          onSeek={onSeek}
+        />
       ))}
     </div>
   );
 }
 
-function LyricsLayer({ layer, settings, onSeek }: { layer: Layer; settings: Settings; onSeek: (ms: number) => void }) {
+function LyricsLayer({
+  layer,
+  artUrl,
+  settings,
+  onSeek,
+}: {
+  layer: Layer;
+  artUrl: string | null;
+  settings: Settings;
+  onSeek: (ms: number) => void;
+}) {
   const { lyrics, loading, error, retry } = useLyrics(layer.track);
-  const { palette, ready } = usePalette(layer.track.artUrl);
+  const { palette, ready } = usePalette(artUrl);
   const vibe = useMemo(() => analyzeVibe(lyrics, palette), [lyrics, palette]);
   const styleId = settings.style === 'auto' ? vibe.autoStyle : settings.style;
   const live = layer.phase !== 'out';
