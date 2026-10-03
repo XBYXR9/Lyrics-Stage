@@ -6,10 +6,12 @@ import { startLogin } from '../lib/auth';
 import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
+import { describeNudge, nudgeBy } from '../lib/nudge';
 import { showsScene } from '../lib/scene';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
 import { friendlyError } from '../lib/spotify';
+import { appVersion, isWatchingTiming, logTiming, sec } from '../lib/timingLog';
 import { visualTransitionMs } from '../lib/transitions';
 import type { Palette, StyleChoice } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
@@ -110,6 +112,13 @@ export function Stage({
   const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
   const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
+  // A timing nudge for the song playing now (keys , and .): only changes when the lyrics show, and ends with the song.
+  const [songNudge, setSongNudge] = useState<{ key: string | null; ms: number }>({ key: null, ms: 0 });
+  const nudgeRef = useRef(songNudge);
+  nudgeRef.current = songNudge;
+  const trackKeyRef = useRef<string | null>(null);
+  trackKeyRef.current = track?.key ?? null;
+  const nudgeMs = track && songNudge.key === track.key ? songNudge.ms : 0;
   const hideControls = useHideControlsInFullscreen(panel !== null);
 
   // Switching "lyrics only" on slides the cover and player away; switching it off brings them back.
@@ -144,7 +153,7 @@ export function Stage({
       sceneShown,
       whileSinging: settings.flashWhileSinging,
       song,
-      offsetMs: settings.offsetMs,
+      offsetMs: settings.offsetMs + nudgeMs,
       energy: vibe?.energy ?? 0.5,
     },
   );
@@ -235,6 +244,19 @@ export function Stage({
             .catch((err) => toast(friendlyError(err), 'error'));
           break;
         }
+        case ',':
+        case '.':
+        case '<':
+        case '>': {
+          const key = trackKeyRef.current;
+          if (!key) break;
+          const step = e.key === ',' || e.key === '.' ? 500 : 100;
+          const base = nudgeRef.current.key === key ? nudgeRef.current.ms : 0;
+          const ms = nudgeBy(base, e.key === '.' || e.key === '>' ? step : -step);
+          setSongNudge({ key, ms });
+          toast(describeNudge(ms));
+          break;
+        }
         case '[':
         case ']': {
           const offsetMs = getSettings().offsetMs + (e.key === ']' ? 100 : -100);
@@ -278,6 +300,28 @@ export function Stage({
   // The desktop app window (whether it follows the Spotify app here or is signed in to Spotify).
   const desktop = desktopApi();
   const update = useAppUpdate();
+
+  // Desktop app signed in to Spotify: also note what the Spotify app on this computer reports around song changes,
+  // to compare with what Spotify's servers say (for the timing report).
+  useEffect(() => {
+    if (!desktop || engine.kind === 'desktop') return;
+    let lastLoggedAt = 0;
+    return desktop.onSnapshot((s) => {
+      const now = performance.now();
+      if (!isWatchingTiming() || now - lastLoggedAt < 500) return;
+      lastLoggedAt = now;
+      logTiming(`local app "${s.track?.title ?? '-'}" position=${s.positionMs === null ? 'n/a' : sec(s.positionMs)} playing=${s.playing ? 1 : 0}`);
+    });
+  }, [desktop, engine]);
+
+  /** What the timing report starts with: where the numbers come from and which settings were on. */
+  const timingHeader = () => [
+    `version: ${appVersion()}`,
+    `source: ${engine.kind}${desktop ? ` (desktop app, ${desktop.platform})` : ' (browser)'}`,
+    `settings: offset=${sec(settings.offsetMs)}s blendFix=${settings.fixBlendTiming ? 'on' : 'off'} automixBlend=${settings.automixBlend ? 'on' : 'off'}`,
+    `typical blend seen: ${sec(state.typicalBlendMs)}s`,
+    `now: ${track ? `"${track.name}" clock=${sec(engine.clock.now())} of ${sec(track.durationMs)} playing=${state.isPlaying ? 1 : 0} nudge=${sec(nudgeMs)}s` : 'no song'}`,
+  ];
 
   // Tell the engine whether to correct the song position after an Automix / Crossfade hand-over.
   useEffect(() => engine.setBlendTimingFix(settings.fixBlendTiming), [engine, settings.fixBlendTiming]);
@@ -327,6 +371,7 @@ export function Stage({
         engine={engine}
         change={change}
         currentTrack={track}
+        nudge={songNudge}
         settings={settings}
         onSeek={(ms) => void run(engine.seek(ms))}
       />
@@ -390,6 +435,15 @@ export function Stage({
             <button onClick={() => updateSettings({ soundSync: 'on' })}>Yes</button>
             <button onClick={() => updateSettings({ soundSync: 'off' })}>No thanks</button>
           </span>
+        )}
+        {nudgeMs !== 0 && (
+          <button
+            className="pill nudge-pill"
+            onClick={() => setSongNudge({ key: null, ms: 0 })}
+            title="Back to normal timing for this song"
+          >
+            {describeNudge(nudgeMs)} · Reset
+          </button>
         )}
         {engine.isDemo && <span className="pill hide-mobile">Demo · no sound</span>}
         {state.problem && !state.authExpired && <span className="pill warn">{state.problem}</span>}
@@ -467,6 +521,7 @@ export function Stage({
           onClose={() => setPanel(null)}
           onSignOut={onSignOut}
           onSignIn={onSignIn}
+          timingHeader={timingHeader}
         />
       )}
 

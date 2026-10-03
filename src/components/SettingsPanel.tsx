@@ -1,6 +1,8 @@
 // Settings: lyric style, timing, text size, background, beat effects and Automix blending.
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useFrame } from '../hooks/hooks';
+import { timingReport } from '../lib/timingLog';
+import { toast } from './Toasts';
 import { audioCounting, getAudioStatus, MAX_SOUND_DELAY_MS, peekAudioLoudness, startAudioLevels, subscribeAudioStatus } from '../lib/audioLevels';
 import { BEAT_PREVIEW_EVENT } from '../lib/beat';
 import { desktopApi } from '../lib/desktopTypes';
@@ -29,6 +31,7 @@ export function SettingsPanel({
   onClose,
   onSignOut,
   onSignIn,
+  timingHeader,
 }: {
   settings: Settings;
   vibe: Vibe | null;
@@ -37,6 +40,8 @@ export function SettingsPanel({
   onClose: () => void;
   onSignOut: () => void;
   onSignIn?: () => void;
+  /** The first lines of the timing report (version, source, settings, what's playing). */
+  timingHeader?: () => string[];
 }) {
   const desktopApp = !!desktopApi();
   const platform = desktopApi()?.platform;
@@ -189,6 +194,11 @@ export function SettingsPanel({
             Lyrics late (e.g. Bluetooth headphones)? Slide right to show them earlier. Shortcut: <kbd>[</kbd> and{' '}
             <kbd>]</kbd>.
           </p>
+          <p className="hint">
+            Just this song is off (for example after an Automix)? Press <kbd>,</kbd> to show the lyrics later or{' '}
+            <kbd>.</kbd> to show them earlier, half a second at a time (<kbd>&lt;</kbd> and <kbd>&gt;</kbd>: a tenth). It
+            ends with the song, and the music keeps playing.
+          </p>
         </Section>
 
         <Section title="Text size">
@@ -292,6 +302,8 @@ export function SettingsPanel({
           </Section>
         )}
 
+        {timingHeader && <TimingReport header={timingHeader} />}
+
         <Section title="Keyboard shortcuts">
           <ul className="keys">
             <li>
@@ -302,6 +314,9 @@ export function SettingsPanel({
             </li>
             <li>
               <kbd>/</kbd> search · <kbd>S</kbd> settings
+            </li>
+            <li>
+              <kbd>,</kbd> / <kbd>.</kbd> lyrics later / earlier, this song only
             </li>
             <li>
               <kbd>Y</kbd> next style · <kbd>L</kbd> lyrics only · <kbd>F</kbd> fullscreen
@@ -458,4 +473,29 @@ function useMeterFill() {
     return () => cancelAnimationFrame(id);
   }, [el]);
   return setEl;
+}
+
+/** A copyable note of what Spotify reported around the latest song changes, for finding timing problems. */
+function TimingReport({ header }: { header: () => string[] }) {
+  const [text, setText] = useState('');
+  const copy = () => {
+    const report = timingReport(header());
+    setText(report);
+    void navigator.clipboard?.writeText(report).then(
+      () => toast('Timing report copied'),
+      () => toast('Select the text below and copy it', 'error'),
+    );
+  };
+  return (
+    <Section title="Timing report">
+      <p className="hint">
+        Lyrics out of time after a song change (Automix, Crossfade)? Right after it happens, click this and paste the
+        result to the developer. It only lists song positions and times; nothing is sent anywhere.
+      </p>
+      <button className="btn wide" onClick={copy}>
+        Copy timing report
+      </button>
+      {text && <textarea className="report-text" readOnly rows={7} value={text} onFocus={(e) => e.currentTarget.select()} />}
+    </Section>
+  );
 }

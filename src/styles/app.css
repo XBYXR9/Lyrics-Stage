@@ -220,6 +220,27 @@ kbd {
   max-width: 50vw;
 }
 
+.pill.nudge-pill {
+  border: 0;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.22);
+}
+.pill.nudge-pill:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+.report-text {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 0;
+  resize: vertical;
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.3);
+}
 .pill.ask-pill {
   display: inline-flex;
   align-items: center;

@@ -36,6 +36,7 @@ export function LyricsStage({
   engine,
   change,
   currentTrack,
+  nudge,
   settings,
   onSeek,
 }: {
@@ -43,6 +44,8 @@ export function LyricsStage({
   change: TrackChange;
   /** The song playing now (its cover may arrive after the song change). */
   currentTrack: TrackInfo | null;
+  /** A timing nudge for the song with this key (see src/lib/nudge.ts). */
+  nudge: { key: string | null; ms: number };
   settings: Settings;
   onSeek: (ms: number) => void;
 }) {
@@ -92,6 +95,7 @@ export function LyricsStage({
           // The playing song's details can arrive after the song change (cover, length): use the latest.
           track={currentTrack && layer.track.key === currentTrack.key ? currentTrack : layer.track}
           settings={settings}
+          nudgeMs={nudge.key !== null && nudge.key === layer.track.key ? nudge.ms : 0}
           onSeek={onSeek}
         />
       ))}
@@ -103,11 +107,13 @@ function LyricsLayer({
   layer,
   track,
   settings,
+  nudgeMs,
   onSeek,
 }: {
   layer: Layer;
   track: TrackInfo;
   settings: Settings;
+  nudgeMs: number;
   onSeek: (ms: number) => void;
 }) {
   const { lyrics, loading, error, retry } = useLyrics(track);
@@ -171,7 +177,7 @@ function LyricsLayer({
         clock={layer.clock}
         vibe={vibe}
         palette={palette}
-        offsetMs={settings.offsetMs}
+        offsetMs={settings.offsetMs + nudgeMs}
         sweep={settings.wordSweep}
         reduceMotion={settings.reduceMotion}
         interactive={live}
