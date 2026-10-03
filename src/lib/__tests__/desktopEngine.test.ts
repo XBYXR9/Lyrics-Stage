@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesktopEngine } from '../desktopEngine';
 import type { DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi } from '../desktopTypes';
+import { clearTimingLog, timingReport } from '../timingLog';
 
 function fakeApi() {
   const sent: DesktopCommand[] = [];
@@ -325,5 +326,21 @@ describe('Spotify reporting the position ahead after a blend', () => {
     emit(snap({ track: track('Song C'), positionMs: 2150 }));
     expect(Math.abs(engine.clock.now() - 2150)).toBeLessThan(300);
     engine.stop();
+  });
+
+  it('writes what it saw to the timing log, to look at a timing problem afterwards', () => {
+    clearTimingLog();
+    const b = blendIntoB();
+    b.play(2000, b.overlap);
+    // the user pauses and resumes: the correction is dropped, and the log says why
+    now += 250;
+    b.setTruth(b.truth() + 250);
+    b.emit(snap({ track: track('Song B'), playing: false, positionMs: b.truth() }));
+    const report = timingReport([]);
+    expect(report).toMatch(/CHANGE desktop: "Song A" .* -> "Song B" .*kind=blend overlap=5\.9/);
+    expect(report).toContain('bias=5.9');
+    expect(report).toMatch(/bias 5\.9 dropped: pause or resume/);
+    expect(report).toMatch(/desktop "Song B" reported=/);
+    b.engine.stop();
   });
 });

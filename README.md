@@ -107,7 +107,8 @@ The page walks you through it. Full guide: **[docs/SETUP.md](docs/SETUP.md)**. J
 | <kbd>L</kbd> | Lyrics only (hide the player) |
 | <kbd>F</kbd> | Fullscreen (the buttons fade out until you move the mouse) |
 | <kbd>−</kbd> / <kbd>+</kbd> | Spotify volume down / up |
-| <kbd>[</kbd> / <kbd>]</kbd> | Show lyrics 0.1s later / earlier |
+| <kbd>[</kbd> / <kbd>]</kbd> | Show lyrics 0.1s later / earlier (every song) |
+| <kbd>,</kbd> / <kbd>.</kbd> | Show lyrics 0.5s later / earlier for this song only (<kbd>&lt;</kbd> / <kbd>&gt;</kbd>: 0.1s), e.g. after an Automix |
 
 ## How it works (short version)
 

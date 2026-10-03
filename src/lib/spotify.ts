@@ -111,6 +111,8 @@ export interface ApiPlayerState {
   device: ApiDevice;
   is_playing: boolean;
   progress_ms: number | null;
+  /** When Spotify says this state was produced (epoch ms). */
+  timestamp?: number;
   currently_playing_type: 'track' | 'episode' | 'ad' | 'unknown';
   item: ApiTrack | null;
   shuffle_state?: boolean;

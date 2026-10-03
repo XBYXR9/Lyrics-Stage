@@ -118,6 +118,14 @@ itself: a pause or resume, a seek (here or from another device), or a jump in th
 blend length. Skips and natural song endings are never touched, and a song whose position we count ourselves
 (Linux) has nothing to correct. Settings → Song transitions → *Keep lyrics in time after a blend* switches it off.
 
+**Finding timing problems.** That correction is a best guess from a known Spotify quirk, so the app keeps a short
+note of what Spotify reports around song changes (`src/lib/timingLog.ts`: each hand-over with how it was classified,
+the blend length and the correction, then the reported position against the app's own clock for about 45 s, and
+when the correction was dropped; in the desktop app signed in, also what the Spotify app on the computer reports).
+Settings → *Copy timing report* copies it as text, with the version, the source and the settings. For a bad song in
+the meantime, `,` and `.` nudge the lyrics later or earlier for that song only (`src/lib/nudge.ts`, 0.5 s a step,
+Shift: 0.1 s, up to 30 s), without touching the music; it ends with the song.
+
 ## 5. Lyrics (`src/lib/lyrics.ts`, `src/lib/lrc.ts`)
 
 Lyrics come from **[LRCLIB](https://lrclib.net)**, a free, open lyrics database that needs no API key.

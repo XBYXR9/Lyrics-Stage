@@ -12,6 +12,7 @@ import { getAccessToken } from './auth';
 import { PlaybackClock, type Clock } from './clock';
 import { loadSdk, sdkPosition, type SdkPlayer, type SdkState, type SdkTrack } from './sdk';
 import { friendlyError, pickImages, spotify, SpotifyError, toTrackInfo, type ApiDevice, type ApiTrack } from './spotify';
+import { isWatchingTiming, logTiming, sec, signedSec, watchTiming } from './timingLog';
 import { BlendLearner, classifyTransition } from './transitions';
 import type { TrackInfo, TransitionInfo } from './types';
 
@@ -135,6 +136,7 @@ const biasResetJumpMs = (biasMs: number) => Math.max(800, Math.min(1500, biasMs 
 
 /** Shared bits for all engines: state, listeners and song-change detection. */
 export abstract class BaseEngine {
+  abstract readonly kind: EngineKind;
   readonly clock = new PlaybackClock();
   protected state: EngineState = initialEngineState();
   private listeners = new Set<() => void>();
@@ -185,9 +187,10 @@ export abstract class BaseEngine {
    * a position update? `reported` is false when the position was counted by us
    * rather than reported by Spotify (so there is nothing to correct).
    */
-  protected observe(track: TrackInfo, reportedMs: number, playing: boolean, measuredAt: number, reported = true) {
+  protected observe(track: TrackInfo, reportedMs: number, playing: boolean, measuredAt: number, reported = true, note = '') {
     const prev = this.state.track;
     const last = this.lastReport;
+    const clockBefore = this.clock.now(measuredAt);
     if (!prev || prev.key !== track.key) {
       const transition: TransitionInfo = prev
         ? classifyTransition({
@@ -200,6 +203,12 @@ export abstract class BaseEngine {
         : { kind: 'initial', overlapMs: 0, startOffsetMs: reportedMs };
       this.positionBiasMs = reported && this.fixBlendTiming && transition.kind === 'blend' ? transition.overlapMs : 0;
       const positionMs = Math.max(0, reportedMs - this.positionBiasMs);
+      logTiming(
+        `CHANGE ${this.kind}: "${prev?.name ?? '-'}" (clock ${sec(clockBefore)} of ${sec(prev?.durationMs)}) -> "${track.name}" (length ${sec(track.durationMs)}) ` +
+          `reported=${sec(reportedMs)} kind=${transition.kind} overlap=${sec(transition.overlapMs)} startOffset=${sec(transition.startOffsetMs)} ` +
+          `sinceLastReport=${sec(this.lastReportAt ? measuredAt - this.lastReportAt : null)} bias=${sec(this.positionBiasMs)} ${note}`.trimEnd(),
+      );
+      watchTiming(45_000);
       this.learner.record(transition);
       const ghost = prev ? this.clock.fork(transition.kind === 'blend') : null;
       this.clock.set(positionMs, playing, measuredAt, track.durationMs);
@@ -218,7 +227,23 @@ export abstract class BaseEngine {
       // refreshed its state: the position is right again, so stop taking the blend length off.
       if (this.positionBiasMs > 0 && last) {
         const expected = last.playing ? last.pos + (measuredAt - last.at) : last.pos;
-        if (!reported || playing !== last.playing || Math.abs(reportedMs - expected) > biasResetJumpMs(this.positionBiasMs)) this.positionBiasMs = 0;
+        const why = !reported
+          ? 'not reported'
+          : playing !== last.playing
+            ? 'pause or resume'
+            : Math.abs(reportedMs - expected) > biasResetJumpMs(this.positionBiasMs)
+              ? `jump of ${signedSec(reportedMs - expected)}`
+              : '';
+        if (why) {
+          logTiming(`bias ${sec(this.positionBiasMs)} dropped: ${why}`);
+          this.positionBiasMs = 0;
+        }
+      }
+      if (isWatchingTiming() || track.durationMs - clockBefore < 25_000) {
+        logTiming(
+          `${this.kind} "${track.name}" reported=${sec(reportedMs)} clock=${sec(clockBefore)} diff=${signedSec(reportedMs - this.positionBiasMs - clockBefore)} ` +
+            `playing=${playing ? 1 : 0} bias=${sec(this.positionBiasMs)} ${note}`.trimEnd(),
+        );
       }
       this.clock.durationMs = track.durationMs;
       this.clock.sync(Math.max(0, reportedMs - this.positionBiasMs), playing, measuredAt);
@@ -385,7 +410,14 @@ export class SpotifyEngine extends BaseEngine implements Engine {
       this.update({ status: 'nothing', isPlaying: false, device });
       return;
     }
-    this.observe(toTrackInfo(res.item), res.progress_ms ?? 0, res.is_playing, measuredAt);
+    this.observe(
+      toTrackInfo(res.item),
+      res.progress_ms ?? 0,
+      res.is_playing,
+      measuredAt,
+      true,
+      typeof res.timestamp === 'number' ? `apiState=${sec(Date.now() - res.timestamp)}s old` : '',
+    );
     this.update({ device, volume: this.volumeSettling() ? this.state.volume : res.device.volume_percent });
   }
 
