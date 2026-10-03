@@ -373,6 +373,28 @@ describe('Spotify reporting the position ahead after a blend', () => {
     engine.stop();
   });
 
+  it('also ignores a stale report of the old song whose position is frozen where it was left', () => {
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api);
+    engine.start();
+    const A = track('Song A', 200_000);
+    const B = track('Song B', 180_000);
+    emit(snap({ track: A, positionMs: 190_000 }));
+    now += 4000;
+    emit(snap({ track: A, positionMs: 194_000 }));
+    now += 500;
+    emit(snap({ track: B, positionMs: 8_000 + 5875 }));
+    const seq = engine.getState().change.seq;
+    // later, Song A is reported again with the position it had when it was left (it never moved)
+    now += 6000;
+    emit(snap({ track: A, positionMs: 194_500 }));
+    now += 500;
+    emit(snap({ track: B, positionMs: 8_000 + 5875 + 6500 }));
+    expect(engine.getState().change.seq).toBe(seq);
+    expect(engine.getState().track?.name).toBe('Song B');
+    engine.stop();
+  });
+
   it('still follows you when you really go back to the song you just left', () => {
     const { api, emit } = fakeApi();
     const engine = new DesktopEngine(api);

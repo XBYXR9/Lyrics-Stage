@@ -130,7 +130,11 @@ export const clampVolume = (v: number) => Math.round(Math.min(100, Math.max(0, v
 
 /** How long after a song change a report of the song just left can still be a stale one (blends last up to 12 s). */
 const STALE_REPORT_WINDOW_MS = 14_000;
-/** A report of the song just left counts as stale if it is within this of where that song would be by now. */
+/**
+ * A report of the song just left counts as stale if it puts that song where it was when it was left, or later (not
+ * more than this earlier): a stale answer may show a frozen position or one that kept counting. A song that really
+ * starts again (pressing "previous") starts from its beginning, far earlier than that.
+ */
 const STALE_REPORT_TOLERANCE_MS = 4000;
 
 /**
@@ -206,9 +210,8 @@ export abstract class BaseEngine {
     // That is not a change back: taking it for one would flip the lyrics, the clock and the animations back and forth.
     const left = this.lastLeft;
     if (prev && left && prev.key !== track.key && track.key === left.key && reported && measuredAt - left.at < STALE_REPORT_WINDOW_MS) {
-      const expected = left.pos + (measuredAt - left.at);
-      if (Math.abs(reportedMs - expected) < STALE_REPORT_TOLERANCE_MS || reportedMs >= left.durationMs - 1500) {
-        logTiming(`ignored a stale report of "${left.name}" (reported ${sec(reportedMs)}, it would be at ${sec(expected)} by now)`);
+      if (reportedMs >= left.pos - STALE_REPORT_TOLERANCE_MS) {
+        logTiming(`ignored a stale report of "${left.name}" (reported ${sec(reportedMs)}; it was left at ${sec(left.pos)})`);
         return;
       }
     }
