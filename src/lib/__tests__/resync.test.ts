@@ -33,6 +33,17 @@ class World {
   failResumeOnce = false;
   /** Does a pause and resume refresh the position? */
   refreshes = true;
+  /** Which quiet attempt (if any) makes the pretend Spotify refresh the position, and which ones fail with an error. */
+  silentWorks: string | null = null;
+  failProbe: { id: string; status: number } | null = null;
+  probeCalls: string[] = [];
+  async probe(id: string) {
+    this.probeCalls.push(id);
+    await new Promise((r) => setTimeout(r, this.latencyMs));
+    if (this.failProbe?.id === id) throw Object.assign(new Error('Spotify says no'), { status: this.failProbe.status });
+    this.advance();
+    if (this.silentWorks === id) this.ahead = 0;
+  }
   constructor(public latencyMs = 120) {}
   private advance() {
     const t = performance.now();
@@ -76,6 +87,18 @@ class World {
 class TestEngine extends BaseEngine {
   readonly kind = 'web-api' as const;
   resyncAllowed = true;
+  /** The quiet attempts this engine offers. */
+  probeIds: string[] = [];
+  protected silentProbes() {
+    return this.probeIds.map((id) => ({ id, run: () => this.world.probe(id) }));
+  }
+  get quiet() {
+    return this.probeMemory;
+  }
+  /** What a seek from the app does to the engine. */
+  userSeek() {
+    this.clearPositionBias();
+  }
   constructor(readonly world: World) {
     super();
   }
@@ -352,5 +375,148 @@ describe('re-syncing after a blend', () => {
       if (exact) expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
       engine.stop();
     }
+  });
+
+  describe('quiet ways, without pausing', () => {
+    it('uses a quiet way that refreshes Spotify, on every blend, and never pauses', async () => {
+      const w = new World();
+      w.silentWorks = 'volume';
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume', 'repeat'];
+      const names = ['A', 'B', 'C', 'D'];
+      for (let i = 1; i <= 3; i++) {
+        await blend(engine, song(names[i - 1]), song(names[i]), { ahead: 6000 });
+        await run(engine, song(names[i]), 9000);
+        expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
+      }
+      expect(w.pauses).toBe(0);
+      expect(w.probeCalls).toEqual(['volume', 'volume', 'volume']); // every blend, since it costs nothing
+      expect(engine.quiet.works).toBe('volume');
+      expect(timingReport([])).toMatch(/RE-SYNC measured error=\+[56]\.\ds quietly, without pausing \(volume\)/);
+    });
+
+    it('tries the next quiet way when the first one shows nothing, and the pause shows the first one does not work', async () => {
+      const w = new World();
+      w.silentWorks = 'repeat';
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume', 'repeat'];
+      await blend(engine, song('A'), song('B'), { ahead: 6000 });
+      await run(engine, song('B'), 12_000);
+      expect(w.probeCalls).toEqual(['volume']);
+      expect(w.pauses).toBe(1); // it still got the lyrics in time, the old way
+      expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
+      expect(engine.quiet.failed).toEqual(['volume']);
+      expect(timingReport([])).toMatch(/the quiet way \(volume\) does not refresh/);
+
+      await blend(engine, song('B'), song('C'), { ahead: 6000 });
+      await run(engine, song('C'), 9000);
+      expect(w.probeCalls).toEqual(['volume', 'repeat']);
+      expect(w.pauses).toBe(1); // no more pausing
+      expect(engine.quiet.works).toBe('repeat');
+      expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
+    });
+
+    it('goes on pausing as before when no quiet way works, and stops trying the ones that did not', async () => {
+      const w = new World();
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume', 'repeat'];
+      const names = ['A', 'B', 'C', 'D'];
+      for (let i = 1; i <= 3; i++) {
+        await blend(engine, song(names[i - 1]), song(names[i]), { ahead: 6000, leftMs: 30_000 });
+        await run(engine, song(names[i]), 12_000);
+      }
+      expect(w.probeCalls).toEqual(['volume', 'repeat']);
+      expect(engine.quiet.failed.sort()).toEqual(['repeat', 'volume']);
+      expect(engine.quiet.works).toBeNull();
+      expect(w.pauses).toBeGreaterThanOrEqual(2);
+    });
+
+    it('writes off a quiet way Spotify refuses (403) at once, and pauses instead', async () => {
+      const w = new World();
+      w.failProbe = { id: 'volume', status: 403 };
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume'];
+      await blend(engine, song('A'), song('B'), { ahead: 6000 });
+      await run(engine, song('B'), 12_000);
+      expect(engine.quiet.failed).toEqual(['volume']);
+      expect(w.pauses).toBe(1);
+      expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
+      expect(timingReport([])).toMatch(/quiet re-sync \(volume\) failed: .*will not try it again/);
+    });
+
+    it('does not write off a quiet way for a network hiccup', async () => {
+      const w = new World();
+      w.failProbe = { id: 'volume', status: 500 };
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume'];
+      await blend(engine, song('A'), song('B'), { ahead: 6000 });
+      await run(engine, song('B'), 12_000);
+      expect(engine.quiet.failed).toEqual([]);
+      expect(w.pauses).toBe(1);
+    });
+
+    it('learns nothing about a quiet way from a blend that had no error to find', async () => {
+      const w = new World();
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume'];
+      await blend(engine, song('A'), song('B'), { ahead: 0, startAt: 6000 }); // the new song starts 6 s in, and Spotify is right
+      expect(engine.getState().change.transition.kind).toBe('blend');
+      await run(engine, song('B'), 12_000);
+      expect(w.probeCalls).toEqual(['volume']);
+      expect(engine.quiet.works).toBeNull();
+      expect(engine.quiet.failed).toEqual([]);
+    });
+
+    it('learns nothing when you press a button while it is checking', async () => {
+      const w = new World();
+      w.silentWorks = 'volume';
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume'];
+      await blend(engine, song('A'), song('B'), { ahead: 6000 });
+      await run(engine, song('B'), 6000);
+      // someone seeks while Spotify is settling after the quiet attempt: the position jumps for another reason
+      await run(engine, song('B'), 500);
+      w.start(w.truth() + 30_000, 0);
+      engine.userSeek();
+      await run(engine, song('B'), 6000);
+      expect(engine.quiet.works).toBeNull();
+      expect(engine.bias.count).toBe(0);
+      expect(timingReport([])).toMatch(/you changed the playback meanwhile/);
+    });
+
+    it('does not write off a quiet way that works because Spotify did not report once', async () => {
+      const w = new World();
+      w.silentWorks = 'volume';
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume'];
+      await blend(engine, song('A'), song('B'), { ahead: 6000 });
+      await run(engine, song('B'), 9000);
+      expect(engine.quiet.works).toBe('volume');
+      // the next blend: no reports at all arrive for a while after the quiet attempt
+      w.start(180_000, 0);
+      engine.feed(song('B'), w.reported(), true);
+      await run(engine, song('B'), 3000);
+      w.start(0, 6000);
+      engine.feed(song('C'), w.reported(), true);
+      for (let t = 0; t < 8200; t += 50) await vi.advanceTimersByTimeAsync(50); // silence: nothing is reported
+      await run(engine, song('C'), 12_000);
+      expect(engine.quiet.failed).toEqual([]);
+    });
+
+    it('falls back to pausing, and forgets it, when a quiet way that used to work is refused', async () => {
+      const w = new World();
+      w.silentWorks = 'volume';
+      const engine = new TestEngine(w);
+      engine.probeIds = ['volume'];
+      await blend(engine, song('A'), song('B'), { ahead: 6000 });
+      await run(engine, song('B'), 9000);
+      expect(engine.quiet.works).toBe('volume');
+      w.failProbe = { id: 'volume', status: 403 };
+      await blend(engine, song('B'), song('C'), { ahead: 6000 });
+      await run(engine, song('C'), 12_000);
+      expect(engine.quiet.works).toBeNull();
+      expect(engine.quiet.failed).toEqual(['volume']);
+      expect(w.pauses).toBe(1);
+    });
   });
 });

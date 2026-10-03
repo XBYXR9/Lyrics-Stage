@@ -131,7 +131,17 @@ and stops pausing the music. It checks again after 2 blends, then 4, 8 and 16 as
 paused less and less); a check that fails starts the measuring again. In the desktop app signed in to Spotify, when the
 Spotify app on this computer has just reported that it is playing exactly this song (`src/lib/localPlayer.ts`), the
 pause and resume go to that app through the operating system instead of through Spotify's servers, which makes the gap
-in the music a fraction of a second shorter; the timing report says which way was used. The re-sync
+in the music a fraction of a second shorter; the timing report says which way was used.
+
+**Quiet ways (`src/lib/silentProbes.ts`).** Pausing is heard, so before it the app tries quiet attempts that might make
+Spotify's player publish a fresh state too: nudging the volume one step and back, and changing the repeat mode to
+another and back (`SpotifyEngine.silentProbes`). Nobody knows if the player answers those with a fresh position, so the
+app finds out by itself: after a quiet attempt it waits 2 s and looks at what Spotify reports. If the position jumped
+by 0.8 s or more, that way works: it is remembered (kept in the browser) and used on every blend from then on, with no
+pause at all. If nothing changed, it pauses and resumes as before, and if that shows an error the quiet attempt didn't
+find, the quiet way is written off (and the next one is tried on the next blend). A blend with no error to find teaches
+nothing about a quiet way. Spotify refusing it (400, 403, 404) writes it off at once; a network hiccup doesn't. Both
+attempts put everything back as they found it, retrying once if putting it back fails. The re-sync
 is skipped when someone pauses or seeks first, near the end of a song, without Premium (403: not tried again), for
 the browser's own player (its positions are exact) and where the Spotify app gives no position (Linux). Settings → Song
 transitions → *Re-sync the timing after a blend* switches it off.

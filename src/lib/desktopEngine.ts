@@ -202,6 +202,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
   }
 
   async togglePlay() {
+    this.noteUserAction();
     const playing = !this.state.isPlaying;
     this.clock.set(this.clock.now(), playing);
     this.update({ isPlaying: playing, status: playing ? 'playing' : 'paused' });
@@ -209,10 +210,12 @@ export class DesktopEngine extends BaseEngine implements Engine {
   }
 
   async next() {
+    this.noteUserAction();
     await this.send({ type: 'next' });
   }
 
   async previous() {
+    this.noteUserAction();
     await this.send({ type: 'previous' });
   }
 

@@ -7,6 +7,8 @@ const server = vi.hoisted(() => ({
   state: null as unknown,
   pause: vi.fn(async () => {}),
   play: vi.fn(async () => {}),
+  volume: vi.fn(async (_percent: number) => {}),
+  repeat: vi.fn(async (_state: string) => {}),
 }));
 vi.mock('../spotify', async (importOriginal) => {
   const real = await importOriginal<typeof import('../spotify')>();
@@ -17,6 +19,8 @@ vi.mock('../spotify', async (importOriginal) => {
       getQueue: async () => null,
       pause: (...a: unknown[]) => server.pause(...(a as [])),
       play: (...a: unknown[]) => server.play(...(a as [])),
+      volume: (v: number) => server.volume(v),
+      repeat: (r: string) => server.repeat(r),
     },
   };
 });
@@ -38,6 +42,10 @@ class Player {
   pos = 0;
   ahead = 0;
   track = 'A';
+  volume = 50;
+  repeat = 'off';
+  /** Which quiet attempt makes this pretend Spotify refresh the position. */
+  silentWorks: string | null = null;
   private last = performance.now();
   private advance() {
     const t = performance.now();
@@ -66,11 +74,17 @@ class Player {
     this.advance();
     this.playing = true;
   }
+  async quiet(id: string) {
+    await new Promise((r) => setTimeout(r, 100));
+    this.advance();
+    if (this.silentWorks === id) this.ahead = 0;
+  }
   /** What Spotify's servers answer. */
   report() {
     this.advance();
     return {
-      device: { id: 'pc', name: 'My PC', type: 'Computer', is_active: true, volume_percent: 50 },
+      device: { id: 'pc', name: 'My PC', type: 'Computer', is_active: true, volume_percent: this.volume },
+      repeat_state: this.repeat,
       is_playing: this.playing,
       progress_ms: Math.round(this.pos + this.ahead),
       timestamp: Date.now(),
@@ -87,6 +101,8 @@ describe('re-syncing through the Web API engine', () => {
     clearTimingLog();
     server.pause.mockClear();
     server.play.mockClear();
+    server.volume.mockReset();
+    server.repeat.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -125,8 +141,17 @@ describe('re-syncing through the Web API engine', () => {
     return { api, sent, tell };
   }
 
-  async function blendAndWait(localPlays: boolean) {
+  async function blendAndWait(localPlays: boolean, silentWorks: string | null = null) {
     const p = new Player();
+    p.silentWorks = silentWorks;
+    server.volume.mockImplementation(async (v: number) => {
+      p.volume = v;
+      await p.quiet('volume');
+    });
+    server.repeat.mockImplementation(async (r: string) => {
+      p.repeat = r;
+      await p.quiet('repeat');
+    });
     server.state = null;
     server.pause.mockImplementation(async () => p.pause(150));
     server.play.mockImplementation(async () => p.resume(150));
@@ -167,5 +192,56 @@ describe('re-syncing through the Web API engine', () => {
     expect(server.play).toHaveBeenCalledTimes(1);
     expect(p.playing).toBe(true);
     expect(timingReport([])).toMatch(/through Spotify’s servers/);
+  });
+
+  it('nudges the volume by one step and puts it back, without pausing, when that refreshes Spotify’s position', async () => {
+    const { engine, p, local } = await blendAndWait(true, 'volume');
+    expect(engine.getState().change.transition.kind).toBe('blend');
+    expect(server.volume.mock.calls.map((c) => c[0])).toEqual([51, 50]);
+    expect(p.volume).toBe(50);
+    expect(server.pause).not.toHaveBeenCalled();
+    expect(local.sent).toEqual([]);
+    expect(p.playing).toBe(true);
+    expect(timingReport([])).toMatch(/RE-SYNC measured error=\+[56]\.\ds quietly, without pausing \(volume\)/);
+  });
+
+  it('pauses as before, and writes the volume nudge off, when the nudge shows nothing', async () => {
+    // (the repeat way is tried on the next blend)
+    const { engine, p } = await blendAndWait(false, 'repeat');
+    expect(server.volume.mock.calls.map((c) => c[0])).toEqual([51, 50]);
+    expect(server.pause).toHaveBeenCalledTimes(1);
+    expect(p.volume).toBe(50);
+    expect(timingReport([])).toMatch(/the quiet way \(volume\) does not refresh/);
+    expect(p.playing).toBe(true);
+    expect(engine.getState().change.transition.kind).toBe('blend');
+  });
+
+  it('puts the volume back even when the first try to do so fails', async () => {
+    const p = new Player();
+    let calls = 0;
+    server.volume.mockImplementation(async (v: number) => {
+      calls++;
+      if (calls === 2) throw new Error('hiccup'); // the put-back fails once
+      p.volume = v;
+    });
+    server.repeat.mockImplementation(async () => {});
+    server.pause.mockImplementation(async () => p.pause(150));
+    server.play.mockImplementation(async () => p.resume(150));
+    const engine = new SpotifyEngine({ browserPlayer: false, local: null });
+    const step = async (ms: number) => {
+      for (let t = 0; t < ms; t += 50) {
+        await vi.advanceTimersByTimeAsync(50);
+        server.state = p.report();
+      }
+    };
+    p.start('A', 190_000, 0);
+    server.state = p.report();
+    engine.start();
+    await step(4000);
+    p.start('B', 0, 6000);
+    await step(14_000);
+    engine.stop();
+    expect(p.volume).toBe(50);
+    expect(server.volume.mock.calls.map((c) => c[0])).toEqual([51, 50, 50]);
   });
 });
