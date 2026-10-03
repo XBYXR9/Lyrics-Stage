@@ -10,6 +10,8 @@
 
 import { getAccessToken } from './auth';
 import { PlaybackClock, type Clock } from './clock';
+import { desktopApi, type LyricsStageDesktopApi } from './desktopTypes';
+import { localIsPlaying, type LocalSnapshot } from './localPlayer';
 import { loadSdk, sdkPosition, type SdkPlayer, type SdkState, type SdkTrack } from './sdk';
 import { friendlyError, pickImages, spotify, SpotifyError, toTrackInfo, type ApiDevice, type ApiTrack } from './spotify';
 import { isWatchingTiming, logTiming, sec, signedSec, watchTiming } from './timingLog';
@@ -254,6 +256,10 @@ export abstract class BaseEngine {
   }
   /** Ask for a fresh report soon (the Web API is only asked about once a second). */
   protected askForReport(): void {}
+  /** For the timing report: how the music was paused (e.g. through the Spotify app on this computer). */
+  protected resyncPath(): string {
+    return '';
+  }
   /** The re-sync can't work from here (e.g. Spotify said no): stop trying. */
   protected resyncBlocked = false;
 
@@ -327,7 +333,7 @@ export abstract class BaseEngine {
       const rule = this.biasLearner.trustedRule();
       logTiming(
         `RE-SYNC measured error=${signedSec(b)}s (guessed first-report=${sec(plan.first)}s, old-song=${sec(plan.old)}s; ` +
-          `paused for about ${sec(gapMs)}s; trusted before: ${rule ?? 'none'})`,
+          `paused for about ${sec(gapMs)}s${this.resyncPath()}; trusted before: ${rule ?? 'none'})`,
       );
       if (b > RESYNC_MAX_AHEAD_MS || b < -RESYNC_MAX_BEHIND_MS) return logTiming('re-sync: that does not look right, not learning from it');
       this.biasLearner.record({ b, first: plan.first, old: plan.old });
@@ -480,10 +486,16 @@ export class SpotifyEngine extends BaseEngine implements Engine {
    * copy protection (DRM) that Electron doesn't include, so music plays in a
    * Spotify app (this computer, phone, speaker) and the window follows it.
    */
-  constructor({ browserPlayer = true }: { browserPlayer?: boolean } = {}) {
+  constructor({ browserPlayer = true, local = desktopApi() }: { browserPlayer?: boolean; local?: LyricsStageDesktopApi | null } = {}) {
     super();
     this.canPlayHere = browserPlayer;
+    this.local = local;
   }
+  /** Desktop app: the Spotify app on this computer, which can be paused and resumed much faster than through Spotify's servers. */
+  private local: LyricsStageDesktopApi | null;
+  private localSnap: LocalSnapshot | null = null;
+  private offLocal: (() => void) | null = null;
+  private resyncVia: 'local' | 'servers' = 'servers';
   private running = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight = false;
@@ -499,13 +511,35 @@ export class SpotifyEngine extends BaseEngine implements Engine {
     return !this.sdkActive && this.state.device?.isActive !== false;
   }
   protected async sendPause() {
+    const uri = this.state.track?.uri;
+    if (this.local && uri && localIsPlaying(this.localSnap, uri, Date.now())) {
+      try {
+        if ((await this.local.command({ type: 'pause' })).ok) {
+          this.resyncVia = 'local';
+          return;
+        }
+      } catch {
+        /* fall back to Spotify's servers */
+      }
+    }
+    this.resyncVia = 'servers';
     await spotify.pause();
   }
   protected async sendResume() {
+    if (this.resyncVia === 'local' && this.local) {
+      try {
+        if ((await this.local.command({ type: 'play' })).ok) return;
+      } catch {
+        /* fall back to Spotify's servers */
+      }
+    }
     await spotify.play(undefined);
   }
   protected askForReport() {
     this.pokeSoon(200);
+  }
+  protected resyncPath() {
+    return this.resyncVia === 'local' ? ', through the Spotify app on this computer' : ', through Spotify’s servers';
   }
 
   private player: SdkPlayer | null = null;
@@ -517,6 +551,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   start() {
     if (this.running) return;
     this.running = true;
+    this.offLocal = this.local?.onSnapshot((s) => (this.localSnap = { uri: s.track?.uri ?? null, playing: s.playing, running: s.running, at: s.at })) ?? null;
     void this.poll();
     let remembered = false;
     try {
@@ -530,6 +565,8 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   stop() {
     this.running = false;
     this.cancelResync('stopped');
+    this.offLocal?.();
+    this.offLocal = null;
     clearTimeout(this.timer);
     clearInterval(this.sdkTimer);
     this.player?.disconnect();

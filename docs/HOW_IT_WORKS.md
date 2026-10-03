@@ -126,8 +126,12 @@ second (the Web API's pause and play, or the Spotify app's own commands in the d
 server to settle, and compares the position it then reports with where the earlier reports said the song would be. The
 difference is the real error; from then on the lyrics follow Spotify's refreshed reports. Each measurement is stored
 next to the two guesses made when the blend was seen (`first-report`: the position of the new song when it showed up;
-`old-song`: how much of the old song was left). When one guess has been right on the last three blends, the app uses it
-and stops pausing the music, checking again every fourth blend; if it stops fitting, pausing starts again. The re-sync
+`old-song`: how much of the old song was left). When one guess has been right on the last two blends, the app uses it
+and stops pausing the music. It checks again after 2 blends, then 4, 8 and 16 as long as the checks pass (the music is
+paused less and less); a check that fails starts the measuring again. In the desktop app signed in to Spotify, when the
+Spotify app on this computer has just reported that it is playing exactly this song (`src/lib/localPlayer.ts`), the
+pause and resume go to that app through the operating system instead of through Spotify's servers, which makes the gap
+in the music a fraction of a second shorter; the timing report says which way was used. The re-sync
 is skipped when someone pauses or seeks first, near the end of a song, without Premium (403: not tried again), for
 the browser's own player (its positions are exact) and where the Spotify app gives no position (Linux). Settings → Song
 transitions → *Re-sync the timing after a blend* switches it off.

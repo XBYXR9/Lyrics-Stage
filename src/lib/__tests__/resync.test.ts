@@ -168,36 +168,36 @@ describe('re-syncing after a blend', () => {
     // Automix cut the old song short: much of it was left when it was replaced, so only the first report tells the error.
     const w = new World();
     const engine = new TestEngine(w);
-    for (const [i, name] of ['B', 'C', 'D'].entries()) {
-      const prev = i === 0 ? song('A') : song(['B', 'C', 'D'][i - 1]);
-      await blend(engine, prev, song(name), { ahead: 6000, leftMs: 30_000 });
-      await run(engine, song(name), 12_000);
+    const names = ['A', 'B', 'C', 'D'];
+    for (let i = 1; i <= 2; i++) {
+      await blend(engine, song(names[i - 1]), song(names[i]), { ahead: 6000, leftMs: 30_000 });
+      await run(engine, song(names[i]), 12_000);
     }
-    expect(w.pauses).toBe(3);
+    expect(w.pauses).toBe(2);
     expect(engine.bias.trustedRule()).toBe('first-report');
 
-    // the fourth blend: nothing is paused, and the lyrics are still in time from the very start
-    await blend(engine, song('D'), song('E'), { ahead: 6000, leftMs: 30_000 });
-    await run(engine, song('E'), 12_000);
-    expect(w.pauses).toBe(3);
+    // the third blend: nothing is paused, and the lyrics are still in time from the very start
+    await blend(engine, song('C'), song('D'), { ahead: 6000, leftMs: 30_000 });
+    await run(engine, song('D'), 12_000);
+    expect(w.pauses).toBe(2);
     expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
     expect(timingReport([])).toMatch(/re-sync skipped: the error is guessed well enough/);
   });
 
-  it('checks a trusted guess again every few blends, and notices when it stops fitting', async () => {
+  it('checks a trusted guess again after a couple of blends, and notices when it stops fitting', async () => {
     const w = new World();
     const engine = new TestEngine(w);
-    for (let i = 0; i < 3; i++) engine.learn(6000, 6100, 6100);
+    for (let i = 0; i < 2; i++) engine.learn(6000, 6100, 6100);
     expect(engine.bias.trustedRule()).toBe('first-report');
-    // three blends use the guess without measuring...
+    // two blends use the guess without measuring...
     let prev = song('A');
-    for (const name of ['B', 'C', 'D']) {
+    for (const name of ['B', 'C']) {
       await blend(engine, prev, song(name), { ahead: 6000 });
       await run(engine, song(name), 9000);
       prev = song(name);
     }
     expect(w.pauses).toBe(0);
-    // ...the fourth is measured, and this time the error was something else
+    // ...the third is measured, and this time the error was something else
     await blend(engine, prev, song('E'), { ahead: 3000, startAt: 8000 }); // starts 8 s in: the first report says 11 s
     await run(engine, song('E'), 9000);
     expect(w.pauses).toBe(1);
