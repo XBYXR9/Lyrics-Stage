@@ -1,9 +1,9 @@
 {
   "name": "spotify-lyrics-stage",
   "private": true,
-  "version": "0.5.7",
+  "version": "0.6.0",
   "type": "module",
-  "description": "Apple Music-style animated lyrics for Spotify — a desktop app that follows the Spotify app (Automix included), plus a web version.",
+  "description": "Apple Music-style animated lyrics for Spotify \u2014 a desktop app that follows the Spotify app (Automix included), plus a web version.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
@@ -12,9 +12,12 @@
     "app:build": "npm run typecheck && vite build && node scripts/build-electron.mjs && electron-builder --publish never",
     "app:start": "vite build && node scripts/build-electron.mjs && electron .",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p electron",
-    "test": "vitest run"
+    "test": "vitest run",
+    "android:sync": "vite build && cap sync android"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "@types/node": "^22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -96,5 +99,10 @@
       "category": "AudioVideo",
       "maintainer": "Lyrics Stage contributors"
     }
+  },
+  "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.5.2"
   }
 }

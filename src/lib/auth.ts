@@ -5,6 +5,7 @@
 // small listener in the app (electron/spotifyLogin.ts) instead of to a website.
 
 import { desktopApi, DESKTOP_REDIRECT_URI, type SpotifyLoginResult } from './desktopTypes';
+import { ANDROID_REDIRECT_URI, isNativeApp, signInWithNativeBrowser, takeLaunchLoginAnswer } from './nativeApp';
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -47,8 +48,13 @@ function write(key: string, value: string | null) {
 }
 
 export function redirectUri(): string {
-  return desktopApi() ? DESKTOP_REDIRECT_URI : `${window.location.origin}/callback`;
+  if (desktopApi()) return DESKTOP_REDIRECT_URI;
+  if (isNativeApp()) return ANDROID_REDIRECT_URI;
+  return `${window.location.origin}/callback`;
 }
+
+/** Does the login finish without leaving the page (the desktop app and the Android app wait for the browser)? */
+export const loginStaysInApp = () => !!desktopApi() || isNativeApp();
 
 export function getClientId(): string {
   const fromEnv = (import.meta.env.VITE_SPOTIFY_CLIENT_ID as string | undefined)?.trim();
@@ -75,9 +81,9 @@ async function sha256Base64Url(input: string): Promise<string> {
 
 /**
  * Starts the Spotify login. The web version leaves the page for Spotify's login
- * and comes back to /callback (see handleRedirect). The desktop app waits for
- * the login to finish in the browser and returns an error message, or null when
- * signed in.
+ * and comes back to /callback (see handleRedirect). The desktop app and the
+ * Android app wait for the login to finish in the browser and return an error
+ * message, or null when signed in.
  */
 export async function startLogin(): Promise<string | null> {
   const clientId = getClientId();
@@ -97,8 +103,20 @@ export async function startLogin(): Promise<string | null> {
   });
   const desktop = desktopApi();
   if (desktop) return completeLogin(await desktop.signInWithSpotify(`${AUTH_URL}?${params}`));
+  if (isNativeApp()) return completeLogin(await signInWithNativeBrowser(`${AUTH_URL}?${params}`));
   window.location.assign(`${AUTH_URL}?${params}`);
   return null;
+}
+
+/**
+ * Android app: if the app was opened by Spotify's answer link while it wasn't
+ * running, finish that login now. Returns null when there is nothing to finish,
+ * else an error message or "" when signed in.
+ */
+export async function finishLaunchLogin(): Promise<string | null> {
+  const answer = await takeLaunchLoginAnswer();
+  if (!answer) return null;
+  return (await completeLogin(answer)) ?? '';
 }
 
 /** Plain-language messages for the desktop sign-in's own errors. */

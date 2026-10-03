@@ -1,11 +1,12 @@
 // The main screen: background, player panel, lyrics, top bar and panels.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useBeatFlash, useRealSound } from '../hooks/beatHooks';
-import { useEngineState, useLyrics, usePalette, usePresence } from '../hooks/hooks';
-import { startLogin } from '../lib/auth';
+import { useEngineState, useKeepAwake, useLyrics, usePalette, usePresence } from '../hooks/hooks';
+import { loginStaysInApp, startLogin } from '../lib/auth';
 import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
+import { isNativeApp, onNativeBack } from '../lib/nativeApp';
 import { describeNudge, nudgeBy } from '../lib/nudge';
 import { showsScene } from '../lib/scene';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
@@ -110,6 +111,9 @@ export function Stage({
   const state = useEngineState(engine);
   const settings = useSettings();
   const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
+  const native = isNativeApp();
   const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
   // A timing nudge for the song playing now (keys , and .): only changes when the lyrics show, and ends with the song.
@@ -119,6 +123,15 @@ export function Stage({
   const trackKeyRef = useRef<string | null>(null);
   trackKeyRef.current = track?.key ?? null;
   const nudgeMs = track && songNudge.key === track.key ? songNudge.ms : 0;
+  /** Shows the lyrics later (negative) or earlier (positive) for the song playing now; keys , . < > and the buttons in Settings. */
+  const nudgeLyrics = useCallback((deltaMs: number) => {
+    const key = trackKeyRef.current;
+    if (!key) return;
+    const base = nudgeRef.current.key === key ? nudgeRef.current.ms : 0;
+    const ms = nudgeBy(base, deltaMs);
+    setSongNudge({ key, ms });
+    toast(describeNudge(ms));
+  }, []);
   const hideControls = useHideControlsInFullscreen(panel !== null);
 
   // Switching "lyrics only" on slides the cover and player away; switching it off brings them back.
@@ -131,6 +144,17 @@ export function Stage({
     const id = setTimeout(() => window.dispatchEvent(new Event('resize')), PANEL_EXIT_MS + 60);
     return () => clearTimeout(id);
   }, [settings.lyricsOnly]);
+
+  // Android app: keep the screen on while a song plays, and let the back button close a panel before it leaves the app.
+  useKeepAwake(native && state.isPlaying);
+  useEffect(() => {
+    if (!native) return;
+    return onNativeBack(() => {
+      if (!panelRef.current) return false;
+      setPanel(null);
+      return true;
+    });
+  }, [native]);
 
   const { palette, ready } = usePalette(track?.artUrl);
   const { lyrics } = useLyrics(track);
@@ -248,13 +272,8 @@ export function Stage({
         case '.':
         case '<':
         case '>': {
-          const key = trackKeyRef.current;
-          if (!key) break;
           const step = e.key === ',' || e.key === '.' ? 500 : 100;
-          const base = nudgeRef.current.key === key ? nudgeRef.current.ms : 0;
-          const ms = nudgeBy(base, e.key === '.' || e.key === '>' ? step : -step);
-          setSongNudge({ key, ms });
-          toast(describeNudge(ms));
+          nudgeLyrics(e.key === '.' || e.key === '>' ? step : -step);
           break;
         }
         case '[':
@@ -277,7 +296,7 @@ export function Stage({
   const reconnect = async () => {
     try {
       const err = await startLogin();
-      if (!desktop) return;
+      if (!loginStaysInApp()) return;
       if (err) toast(err, 'error');
       else window.location.reload();
     } catch (e) {
@@ -387,7 +406,7 @@ export function Stage({
 
   return (
     <div
-      className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
+      className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${native ? ' is-native' : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
         track ? '' : ' no-track'
       }${hideControls ? ' controls-hidden' : ''}${settings.reduceMotion ? ' calm-ui' : ''}`}
       style={stageStyle}
@@ -522,6 +541,9 @@ export function Stage({
           onSignOut={onSignOut}
           onSignIn={onSignIn}
           timingHeader={timingHeader}
+          songNudgeMs={nudgeMs}
+          onNudge={nudgeLyrics}
+          onResetNudge={() => setSongNudge({ key: null, ms: 0 })}
         />
       )}
 

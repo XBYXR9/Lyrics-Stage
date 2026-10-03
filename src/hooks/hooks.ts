@@ -124,3 +124,31 @@ export function formatTime(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/**
+ * Keeps the screen on while `on` is true (a phone would otherwise go dark in the
+ * middle of a song). Asks again when the app comes back to the front, since the
+ * system lets go of it whenever the screen is switched off.
+ */
+export function useKeepAwake(on: boolean) {
+  useEffect(() => {
+    if (!on || typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    const ask = async () => {
+      try {
+        lock = await navigator.wakeLock.request('screen');
+      } catch {
+        /* not allowed right now (e.g. low battery): the screen just turns off as usual */
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void ask();
+    };
+    void ask();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      void lock?.release().catch(() => {});
+    };
+  }, [on]);
+}

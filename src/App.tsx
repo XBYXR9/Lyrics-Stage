@@ -2,16 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { Setup } from './components/Setup';
 import { Stage } from './components/Stage';
 import { Toasts } from './components/Toasts';
-import { handleRedirect, isLoggedIn, logout } from './lib/auth';
+import { finishLaunchLogin, handleRedirect, isLoggedIn, logout } from './lib/auth';
 import { DemoEngine } from './lib/demo';
 import { DesktopEngine } from './lib/desktopEngine';
 import { desktopApi } from './lib/desktopTypes';
 import { SpotifyEngine, type Engine } from './lib/engine';
+import { isNativeApp } from './lib/nativeApp';
 
 // "desktop": the desktop app, following the Spotify app on this computer.
 // "spotify": signed in to Spotify, using the Spotify Web API (needs a developer
-//            app). The web version always works this way; the desktop app does
-//            when you choose "Sign in with Spotify".
+//            app). The web version and the Android app always work this way; the
+//            desktop app does when you choose "Sign in with Spotify".
 type Mode = 'loading' | 'setup' | 'spotify' | 'desktop' | 'demo';
 
 const DEMO_KEY = 'ls.demo';
@@ -62,6 +63,17 @@ export default function App() {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [error, setError] = useState<string | null>(null);
 
+  // Android app: if Spotify's answer opened the app from scratch (Android had closed it while the browser was in
+  // front), finish that login now.
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    void finishLaunchLogin().then((result) => {
+      if (result === null) return;
+      setError(result || null);
+      if (!result && isLoggedIn()) setMode('spotify');
+    });
+  }, []);
+
   // Web version: finish the Spotify login if we just came back from it.
   useEffect(() => {
     if (mode !== 'loading') return;
@@ -72,7 +84,8 @@ export default function App() {
   }, [mode]);
 
   const engine: Engine | null = useMemo(() => {
-    if (mode === 'spotify') return new SpotifyEngine({ browserPlayer: !desktopApi() });
+    // Spotify's web player can't run in the desktop app or Android's web view: the music plays in a Spotify app.
+    if (mode === 'spotify') return new SpotifyEngine({ browserPlayer: !desktopApi() && !isNativeApp() });
     if (mode === 'demo') return new DemoEngine();
     const api = desktopApi();
     if (mode === 'desktop' && api) return new DesktopEngine(api);
@@ -117,7 +130,7 @@ export default function App() {
   if (!engine) {
     return (
       <>
-        <Setup error={error} onDemo={startDemo} desktop={desktopSignIn} />
+        <Setup error={error} onDemo={startDemo} desktop={desktopSignIn} onSignedIn={() => setMode('spotify')} />
         <Toasts />
       </>
     );
