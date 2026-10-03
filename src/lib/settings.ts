@@ -23,6 +23,8 @@ export interface Settings {
   breakVisual: BreakVisualChoice;
   /** Windows desktop app: make the bars follow the real sound instead of an estimated rhythm. */
   reactToSound: boolean;
+  /** A soft flash on strong beats in the short pauses between lines. */
+  beatFlash: boolean;
   /** Tone down movement and blur. */
   reduceMotion: boolean;
   /** Hide the player controls and show only lyrics. */
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   automixBlend: true,
   breakVisual: 'bars',
   reactToSound: false,
+  beatFlash: true,
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,
   alwaysOnTop: false,

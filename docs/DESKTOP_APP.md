@@ -124,8 +124,14 @@ Spotify doesn't share beat or tempo data with apps like this one, so by default 
 rhythm**: its speed comes from how energetic the song feels (rap and dance songs are fast, ballads slow). It looks like
 a beat, but it isn't locked to the real one.
 
+**Beat flash:** in the split-second pauses between lines (a gap of 0.25 s up to a long break), a soft glow and ring in
+the album's colors pulse on strong beats, never more than three a second. Off with **Reduce motion** or in Settings.
+Without the real sound it flashes on the first and third beat of each bar of the estimated rhythm, so it can be a
+little off the real beat.
+
 **Windows only, optional:** Settings → Instrumental breaks → **Follow the real sound (experimental)** makes the bars
-follow the actual music. The app asks Windows for a copy of the sound going to the speakers (`electron/main.ts`) and
+and the flash follow the actual music (a flash fires when the bass jumps well above its recent average, like a kick
+drum). The app asks Windows for a copy of the sound going to the speakers (`electron/main.ts`) and
 analyses it in the page (`src/lib/audioLevels.ts`). Everything playing on the computer is heard, not just Spotify. The
 sound is analysed on the spot and thrown away: never recorded, saved or sent anywhere. Windows may need a click or key
 press in the app before it shares the sound. If it can't, or the sound is silent, the bars use the estimated rhythm.

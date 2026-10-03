@@ -10,6 +10,7 @@ import type { Settings } from '../lib/settings';
 import { visualTransitionMs } from '../lib/transitions';
 import type { TrackInfo, TransitionKind } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
+import { BeatFlash } from './BeatFlash';
 import { PlainLyrics } from './PlainLyrics';
 import { STYLE_BY_ID } from './styles';
 import { BreakVisualContext, Dots } from './styles/Dots';
@@ -183,6 +184,10 @@ function LyricsLayer({
       }
       aria-hidden={!live}
     >
+      {/* behind the lyrics: a soft flash on strong beats in the short pauses between lines */}
+      {live && settings.beatFlash && !settings.reduceMotion && lyrics?.kind === 'synced' && (
+        <BeatFlash lyrics={lyrics} clock={layer.clock} offsetMs={settings.offsetMs} energy={vibe.energy} />
+      )}
       <BreakVisualContext.Provider value={breakVisual}>{body}</BreakVisualContext.Provider>
     </div>
   );

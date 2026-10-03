@@ -196,6 +196,15 @@ high bars flick on the off-beats). It's worked out from the playback position, s
 Windows desktop app, "Follow the real sound" instead feeds the bars from a Web Audio analyser on the system sound
 (`src/lib/audioLevels.ts`).
 
+### Beat flash
+
+In a *short pause* (after one sung line, before the next, a gap of at least 250 ms and under the 4.5 s that makes an
+interlude), `BeatFlash` (`src/components/BeatFlash.tsx`) pulses a tinted glow and a ring behind the lyrics on strong
+beats. The rules are in `src/lib/beat.ts`: flashes are at least 340 ms apart (never more than three a second, the
+accessibility limit for flashing content), the glow never goes above 40% opacity, and Reduce motion turns it off. The
+beats come from the real sound when "Follow the real sound" is on (`detectBeat` in `src/lib/audioLevels.ts`: bass
+jumping well above its recent average), otherwise from the estimated rhythm (`estimatedBeat` in `src/lib/pulse.ts`).
+
 ### Lyrics only
 
 Switching "lyrics only" on slides the cover and player away (the cover shrinks, spins and blurs out first) while the
