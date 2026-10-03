@@ -29,7 +29,8 @@ songs together, the lyrics blend too.
   breaks.)
 - **A beat flash you can choose.** On strong beats in the split-second pauses between lines, pick how it looks in
   Settings → Beat flash: a soft **glow**, a **full-screen** color wash, lit **edges**, a little **kick** of the lyrics,
-  or off. At most three flashes a second, soft and tinted (never white), and off with Reduce motion.
+  or off. At most three flashes a second, soft and tinted (never white), and off with Reduce motion. With the PC's
+  real sound (Windows), big beats glow even while someone is singing, not only in the pauses.
 - **A scene for songs without lyrics.** Instrumentals and songs LRCLIB doesn't have show an orb or a mirrored
   equalizer in the album's colors that punches on every beat; big beats send a shockwave across the screen
   (Settings → Songs without lyrics).

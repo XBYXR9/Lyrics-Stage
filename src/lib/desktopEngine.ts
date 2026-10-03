@@ -120,7 +120,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
       const isNew = this.state.track?.key !== track.key;
       positionMs = isNew ? 0 : this.clock.now(measuredAt);
     }
-    this.observe(track, positionMs, s.playing, measuredAt);
+    this.observe(track, positionMs, s.playing, measuredAt, s.positionMs !== null);
     const p = patch();
     // Same song, but its cover or length showed up a moment later (Windows
     // often sends the title first and the rest after): use them now. The
@@ -207,6 +207,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
   async seek(positionMs: number) {
     // Also how Linux users "sync" the lyrics, since we can't read the position there.
     this.clock.set(positionMs, this.clock.playing);
+    this.clearPositionBias();
     await this.send({ type: 'seek', positionMs });
   }
 

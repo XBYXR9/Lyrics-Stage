@@ -142,6 +142,7 @@ export function Stage({
       reduceMotion: settings.reduceMotion,
       lyrics,
       sceneShown,
+      bigBeats: settings.flashOnBigBeats,
       song,
       offsetMs: settings.offsetMs,
       energy: vibe?.energy ?? 0.5,
@@ -277,6 +278,9 @@ export function Stage({
   // The desktop app window (whether it follows the Spotify app here or is signed in to Spotify).
   const desktop = desktopApi();
   const update = useAppUpdate();
+
+  // Tell the engine whether to correct the song position after an Automix / Crossfade hand-over.
+  useEffect(() => engine.setBlendTimingFix(settings.fixBlendTiming), [engine, settings.fixBlendTiming]);
 
   // Desktop app: keep the window above others if the user wants a lyrics "mini player".
   useEffect(() => {

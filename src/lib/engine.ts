@@ -94,6 +94,8 @@ export interface Engine {
   changeVolume(delta: number): Promise<void>;
   /** The cover picture at this address didn't load; find another one if possible. */
   coverFailed?(url: string): void;
+  /** Take the blend length off the song position Spotify reports after an Automix or Crossfade hand-over (see BaseEngine). */
+  setBlendTimingFix(on: boolean): void;
 }
 
 export const BROWSER_PLAYER_NAME = 'Lyrics Stage';
@@ -125,6 +127,12 @@ export function initialEngineState(): EngineState {
 /** Keeps a volume within 0–100. */
 export const clampVolume = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
 
+/**
+ * A change in the reported position (beyond normal playing) bigger than this means Spotify refreshed its state:
+ * a good part of the blend length, but never less than a normal bit of network jitter.
+ */
+const biasResetJumpMs = (biasMs: number) => Math.max(800, Math.min(1500, biasMs * 0.6));
+
 /** Shared bits for all engines: state, listeners and song-change detection. */
 export abstract class BaseEngine {
   readonly clock = new PlaybackClock();
@@ -150,22 +158,48 @@ export abstract class BaseEngine {
   protected onTrackChanged(): void {}
 
   /**
+   * After Spotify moves on by itself with Crossfade or Automix, the position it
+   * reports for the new song is ahead by the length of the blend, until the
+   * next pause, resume or seek refreshes it (a known Spotify quirk, also seen
+   * through AppleScript). Left alone, the lyrics run early for the rest of the
+   * song. This is that amount, taken off every report; see observe().
+   */
+  private positionBiasMs = 0;
+  private fixBlendTiming = true;
+  /** The last position Spotify reported, to notice when it corrects itself. */
+  private lastReport: { pos: number; at: number; playing: boolean } | null = null;
+
+  setBlendTimingFix(on: boolean) {
+    this.fixBlendTiming = on;
+    if (!on) this.positionBiasMs = 0;
+  }
+
+  /** Spotify's state is refreshed by a seek, so the blend length no longer applies. */
+  protected clearPositionBias() {
+    this.positionBiasMs = 0;
+  }
+
+  /**
    * Core logic shared by every source: is this a new song (and if so, how did
    * it hand over — skip, natural end, or an Automix/Crossfade blend?) or just
-   * a position update?
+   * a position update? `reported` is false when the position was counted by us
+   * rather than reported by Spotify (so there is nothing to correct).
    */
-  protected observe(track: TrackInfo, positionMs: number, playing: boolean, measuredAt: number) {
+  protected observe(track: TrackInfo, reportedMs: number, playing: boolean, measuredAt: number, reported = true) {
     const prev = this.state.track;
+    const last = this.lastReport;
     if (!prev || prev.key !== track.key) {
       const transition: TransitionInfo = prev
         ? classifyTransition({
             prevDurationMs: prev.durationMs,
             prevPositionMs: this.clock.raw(measuredAt),
-            newPositionMs: positionMs,
+            newPositionMs: reportedMs,
             sinceLastReportMs: this.lastReportAt ? measuredAt - this.lastReportAt : 5000,
             wasPlaying: this.clock.playing,
           })
-        : { kind: 'initial', overlapMs: 0, startOffsetMs: positionMs };
+        : { kind: 'initial', overlapMs: 0, startOffsetMs: reportedMs };
+      this.positionBiasMs = reported && this.fixBlendTiming && transition.kind === 'blend' ? transition.overlapMs : 0;
+      const positionMs = Math.max(0, reportedMs - this.positionBiasMs);
       this.learner.record(transition);
       const ghost = prev ? this.clock.fork(transition.kind === 'blend') : null;
       this.clock.set(positionMs, playing, measuredAt, track.durationMs);
@@ -180,12 +214,19 @@ export abstract class BaseEngine {
       });
       this.onTrackChanged();
     } else {
+      // A pause or resume, or a jump in what Spotify reports (a seek, from here or another device), means it
+      // refreshed its state: the position is right again, so stop taking the blend length off.
+      if (this.positionBiasMs > 0 && last) {
+        const expected = last.playing ? last.pos + (measuredAt - last.at) : last.pos;
+        if (!reported || playing !== last.playing || Math.abs(reportedMs - expected) > biasResetJumpMs(this.positionBiasMs)) this.positionBiasMs = 0;
+      }
       this.clock.durationMs = track.durationMs;
-      this.clock.sync(positionMs, playing, measuredAt);
+      this.clock.sync(Math.max(0, reportedMs - this.positionBiasMs), playing, measuredAt);
       if (this.state.isPlaying !== playing || this.state.status !== (playing ? 'playing' : 'paused')) {
         this.update({ isPlaying: playing, status: playing ? 'playing' : 'paused' });
       }
     }
+    this.lastReport = { pos: reportedMs, at: measuredAt, playing };
     this.lastReportAt = measuredAt;
   }
 }
@@ -525,6 +566,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
 
   async seek(positionMs: number) {
     this.clock.set(positionMs, this.clock.playing);
+    this.clearPositionBias();
     try {
       await spotify.seek(positionMs);
     } finally {

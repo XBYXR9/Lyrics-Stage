@@ -197,3 +197,133 @@ describe('DesktopEngine', () => {
     await expect(engine.next()).rejects.toThrow('Nope');
   });
 });
+
+describe('Spotify reporting the position ahead after a blend', () => {
+  let now = 0;
+  beforeEach(() => {
+    now = 10_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.spyOn(Date, 'now').mockImplementation(() => 1_000_000 + now);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const snap = (over: Partial<DesktopSnapshot>): DesktopSnapshot => ({
+    source: 'applescript',
+    running: true,
+    playing: true,
+    track: track('Song A'),
+    positionMs: 0,
+    at: Date.now(),
+    canSeek: true,
+    ...over,
+  });
+
+  /**
+   * Song A is 6 s from its end when Spotify mixes into Song B, whose audio starts 8 s in (Automix skips the
+   * intro). From then on Spotify reports Song B's position ahead by the length of the blend.
+   */
+  function blendIntoB() {
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api);
+    engine.start();
+    emit(snap({ positionMs: 190_000 }));
+    now += 4000;
+    emit(snap({ positionMs: 194_000 }));
+    now += 250;
+    // The audio of Song B is at 8 s right now.
+    emit(snap({ track: track('Song B'), positionMs: 8_000 + 5875 }));
+    const overlap = engine.getState().change.transition.overlapMs;
+    let truth = 8_000;
+    /** Time passes; Spotify reports `truth + ahead`. */
+    const play = (ms: number, ahead: number) => {
+      for (let t = 0; t < ms; t += 250) {
+        now += 250;
+        truth += 250;
+        emit(snap({ track: track('Song B'), positionMs: truth + ahead }));
+      }
+    };
+    return { engine, emit, overlap, play, truth: () => truth, setTruth: (v: number) => (truth = v) };
+  }
+
+  it('takes the length of the blend off, so the lyrics stay in time', () => {
+    const b = blendIntoB();
+    expect(b.engine.getState().change.transition.kind).toBe('blend');
+    expect(b.overlap).toBe(5875);
+    b.play(8000, b.overlap);
+    expect(Math.abs(b.engine.clock.now() - b.truth())).toBeLessThan(300);
+    b.engine.stop();
+  });
+
+  it('can be switched off', () => {
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api);
+    engine.setBlendTimingFix(false);
+    engine.start();
+    emit(snap({ positionMs: 190_000 }));
+    now += 4000;
+    emit(snap({ positionMs: 194_000 }));
+    now += 250;
+    emit(snap({ track: track('Song B'), positionMs: 8_000 + 5875 }));
+    now += 2000;
+    emit(snap({ track: track('Song B'), positionMs: 10_000 + 5875 }));
+    // Without the fix the clock follows exactly what Spotify reports (ahead).
+    expect(engine.clock.now()).toBeGreaterThan(15_000);
+    engine.stop();
+  });
+
+  it('stops taking it off once Spotify refreshes its state (pause and resume)', () => {
+    const b = blendIntoB();
+    b.play(3000, b.overlap);
+    // The user pauses and resumes: Spotify reports the right position again.
+    now += 250;
+    b.setTruth(b.truth() + 250);
+    b.emit(snap({ track: track('Song B'), playing: false, positionMs: b.truth() }));
+    now += 1000;
+    b.emit(snap({ track: track('Song B'), playing: true, positionMs: b.truth() }));
+    b.play(4000, 0);
+    expect(Math.abs(b.engine.clock.now() - b.truth())).toBeLessThan(300);
+    b.engine.stop();
+  });
+
+  it('stops taking it off when the reported position jumps back to the right place on its own', () => {
+    const b = blendIntoB();
+    b.play(3000, b.overlap);
+    b.play(4000, 0); // Spotify corrected itself: the reports drop by the blend length
+    expect(Math.abs(b.engine.clock.now() - b.truth())).toBeLessThan(300);
+    b.engine.stop();
+  });
+
+  it('stops taking it off after you seek', async () => {
+    const b = blendIntoB();
+    b.play(3000, b.overlap);
+    await b.engine.seek(100_000);
+    b.setTruth(100_000);
+    b.play(3000, 0);
+    expect(Math.abs(b.engine.clock.now() - b.truth())).toBeLessThan(300);
+    b.engine.stop();
+  });
+
+  it('leaves a skip and a normal song ending alone', () => {
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api);
+    engine.start();
+    emit(snap({ positionMs: 30_000 }));
+    now += 250;
+    emit(snap({ track: track('Song B'), positionMs: 500 })); // skipped to the next song
+    expect(engine.getState().change.transition.kind).toBe('skip');
+    now += 2000;
+    emit(snap({ track: track('Song B'), positionMs: 2500 }));
+    expect(Math.abs(engine.clock.now() - 2500)).toBeLessThan(300);
+
+    // Song B plays to its very end and Song C follows: a natural change, no blend.
+    now += 250;
+    emit(snap({ track: track('Song B'), positionMs: 199_900 }));
+    now += 250;
+    emit(snap({ track: track('Song C'), positionMs: 150 }));
+    expect(engine.getState().change.transition.kind).toBe('natural');
+    now += 2000;
+    emit(snap({ track: track('Song C'), positionMs: 2150 }));
+    expect(Math.abs(engine.clock.now() - 2150)).toBeLessThan(300);
+    engine.stop();
+  });
+});

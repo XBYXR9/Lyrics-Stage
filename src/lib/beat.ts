@@ -65,30 +65,41 @@ export function flashShape(ageMs: number, strength: number): { glow: number; rin
   };
 }
 
+/** A beat at least this strong is a "big beat" (the same cut-off the no-lyrics scene uses for its shockwave). */
+export const BIG_BEAT = 0.7;
+export const isBigBeat = (strength: number) => strength >= BIG_BEAT;
+
 /** What the beat code should do right now. */
 export interface BeatPlan {
   /** Listen for beats at all (costs a little work every frame). */
   detect: boolean;
   /** Where the chosen flash style may show: only in short pauses between lines, anywhere (a song without lyrics), or never. */
   flashIn: 'pauses' | 'always' | 'never';
+  /** Big beats heard in the real sound also flash anywhere in the song, even while someone is singing. */
+  bigAnywhere: boolean;
 }
 
 /**
  * Works out what to do from the settings and what's on screen. Reduce motion
  * switches everything off. With synced lyrics the flash shows in the short
- * pauses. With the no-lyrics scene on screen, beats are always listened for (the
- * scene pulses with them) and the flash shows on every strong beat.
+ * pauses, and big beats (if allowed) show anywhere. With the no-lyrics scene on
+ * screen, beats are always listened for (the scene pulses with them) and the
+ * flash shows on every strong beat.
  */
 export function beatPlan(o: {
   style: BeatStyle;
   reduceMotion: boolean;
   lyricsKind: LyricsKind | null;
   sceneShown: boolean;
+  bigBeats: boolean;
 }): BeatPlan {
-  if (o.reduceMotion) return { detect: false, flashIn: 'never' };
-  if (o.sceneShown) return { detect: true, flashIn: o.style === 'off' ? 'never' : 'always' };
-  if (o.lyricsKind === 'synced' && o.style !== 'off') return { detect: true, flashIn: 'pauses' };
-  return { detect: false, flashIn: 'never' };
+  const off: BeatPlan = { detect: false, flashIn: 'never', bigAnywhere: false };
+  if (o.reduceMotion) return off;
+  if (o.sceneShown) return { detect: true, flashIn: o.style === 'off' ? 'never' : 'always', bigAnywhere: false };
+  if (o.style === 'off') return off;
+  const synced = o.lyricsKind === 'synced';
+  if (!synced && !o.bigBeats) return off;
+  return { detect: true, flashIn: synced ? 'pauses' : 'never', bigAnywhere: o.bigBeats };
 }
 
 // Strong beats are announced here, so the flash and the no-lyrics scene react to the same ones.

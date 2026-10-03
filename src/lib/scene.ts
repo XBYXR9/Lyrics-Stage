@@ -11,9 +11,8 @@ export function showsScene(kind: LyricsKind | null, visual: NoLyricsVisual, redu
   return (kind === 'none' || kind === 'instrumental') && visual !== 'message' && !reduceMotion;
 }
 
-/** A beat at least this strong is a "big beat": it gets a bigger punch and a wider shockwave. */
-export const BIG_BEAT = 0.7;
-export const isBigBeat = (strength: number) => strength >= BIG_BEAT;
+export { BIG_BEAT, isBigBeat } from './beat';
+import { isBigBeat } from './beat';
 
 /** How much the orb (or the equalizer) swells `ageMs` after a beat: a quick punch that settles back, bigger for big beats. */
 export function punchShape(ageMs: number, strength: number): number {

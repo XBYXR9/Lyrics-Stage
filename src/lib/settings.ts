@@ -25,6 +25,8 @@ export interface Settings {
   wordSweep: WordSweep;
   /** Long, smooth crossfades when Spotify Automix / Crossfade blends songs. */
   automixBlend: boolean;
+  /** After Automix / Crossfade, take the blend length off the position Spotify reports (it's ahead until you pause or seek). */
+  fixBlendTiming: boolean;
   /** What to show during instrumental breaks: moving bars, or the three dots. */
   breakVisual: BreakVisualChoice;
   /** Windows desktop app: make the bars, the flash and the no-lyrics scene follow the computer's real sound (only while the song plays). */
@@ -33,6 +35,8 @@ export interface Settings {
   soundDelayMs: number;
   /** How strong beats show in the short pauses between lines, and in a song without lyrics. */
   beatStyle: BeatStyle;
+  /** Big beats in the real sound (Windows) also glow while someone is singing, not only in the pauses between lines. */
+  flashOnBigBeats: boolean;
   /** What to show while a song has no lyrics (or is instrumental). */
   noLyricsVisual: NoLyricsVisual;
   /** Tone down movement and blur. */
@@ -55,10 +59,12 @@ export const DEFAULT_SETTINGS: Settings = {
   background: 'art',
   wordSweep: 'estimated',
   automixBlend: true,
+  fixBlendTiming: true,
   breakVisual: 'bars',
   soundSync: 'ask',
   soundDelayMs: 0,
   beatStyle: 'glow',
+  flashOnBigBeats: true,
   noLyricsVisual: 'orb',
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,
