@@ -51,3 +51,19 @@ export function estimatedBars(out: Float32Array, songMs: number, energy: number)
     out[i] = clamp01((body + hit * 0.75) * punch);
   }
 }
+
+/**
+ * Did a strong beat of the estimated rhythm pass between song positions
+ * `prevMs` and `nowMs` (one frame apart)? Returns its strength (0..1), or 0.
+ * Only the first beat of each bar (1) and the third (0.65) count as strong. A
+ * jump, like seeking, isn't a beat.
+ */
+export function estimatedBeat(prevMs: number, nowMs: number, energy: number): number {
+  if (nowMs <= prevMs || nowMs - prevMs > 250) return 0;
+  const beatMs = 60000 / estimatedBpm(energy);
+  const was = Math.floor(prevMs / beatMs);
+  const now = Math.floor(nowMs / beatMs);
+  if (now === was) return 0;
+  const inBar = ((now % 4) + 4) % 4;
+  return inBar === 0 ? 1 : inBar === 2 ? 0.65 : 0;
+}

@@ -27,6 +27,8 @@ songs together, the lyrics blend too.
 - **A visualizer in the instrumental breaks.** Instead of three dots, moving bars in the album's colors keep the beat
   while the singing pauses, with a thin line showing when the lyrics come back. (Prefer dots? Settings → Instrumental
   breaks.) On Windows the bars can follow the real sound.
+- **A beat flash in the split-second pauses.** Between lines, a soft glow and ring pulse on strong beats, at most three
+  times a second (Settings → Instrumental breaks turns it off, and so does Reduce motion).
 - **Works with right-to-left lyrics** such as Arabic and Hebrew.
 - **A demo mode** to try every style without Spotify.
 

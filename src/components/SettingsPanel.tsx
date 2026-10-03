@@ -97,6 +97,15 @@ export function SettingsPanel({
             When the singing pauses, moving bars in the album’s colors keep the beat. A thin line shows when the lyrics
             come back.
           </p>
+          <Toggle
+            checked={settings.beatFlash}
+            onChange={(v) => set({ beatFlash: v })}
+            label="Flash on strong beats in short pauses"
+          />
+          <p className="hint">
+            A soft glow and ring pulse on strong beats in the split-second pauses between lines, at most three times a
+            second. It’s off with Reduce motion.
+          </p>
           {settings.breakVisual === 'bars' && desktopApp && platform === 'win32' && (
             <>
               <Toggle
@@ -105,8 +114,8 @@ export function SettingsPanel({
                 label="Follow the real sound (experimental)"
               />
               <p className="hint">
-                Listens to your computer’s sound output, so the bars hit the real beat. Everything playing is heard,
-                not just Spotify. The sound is analysed inside the app and is never recorded or sent anywhere.
+                Listens to your computer’s sound output, so the bars and the flash hit the real beat. Everything
+                playing is heard, not just Spotify. The sound is analysed inside the app and is never recorded or sent anywhere.
               </p>
             </>
           )}

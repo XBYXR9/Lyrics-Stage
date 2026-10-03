@@ -55,6 +55,32 @@ export function barsFromSpectrum(
   return !silent;
 }
 
+/** Remembers what the bass has been doing, to tell a hit from steady loudness. */
+export interface BeatState {
+  /** Slowly-moving average of the bass level. */
+  avg: number;
+  lastAt: number;
+}
+
+/** The average is learned from the first sample, so music that is already loud doesn't start with false beats. */
+export const newBeatState = (): BeatState => ({ avg: -1, lastAt: -Infinity });
+
+/**
+ * Is this a strong beat? `bass` is the current level of the low bars (0..1).
+ * A beat is a clear jump above the bass's recent average, at least 250 ms
+ * after the last one, so steady loud bass isn't a beat, a kick drum is.
+ * Returns its strength (0..1), or 0.
+ */
+export function detectBeat(bass: number, state: BeatState, nowMs: number): number {
+  if (state.avg < 0) state.avg = bass;
+  const threshold = Math.max(0.2, state.avg * 1.4);
+  const hit = bass > threshold && nowMs - state.lastAt > 250;
+  state.avg = state.avg * 0.96 + bass * 0.04;
+  if (!hit) return 0;
+  state.lastAt = nowMs;
+  return Math.min(1, 0.35 + (bass - threshold) * 2.2);
+}
+
 let context: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
 let stream: MediaStream | null = null;
@@ -65,6 +91,8 @@ let lastReadAt = -Infinity;
 let lastHeard = false;
 const state = { smooth: new Float32Array(BAR_COUNT), peak: 0 };
 const cache = new Float32Array(BAR_COUNT);
+let beatState = newBeatState();
+let pendingBeat = 0;
 
 /** Is the app listening to the sound right now? */
 export function audioLive(): boolean {
@@ -121,6 +149,15 @@ export function stopAudioLevels() {
   state.smooth.fill(0);
   state.peak = 0;
   lastHeard = false;
+  beatState = newBeatState();
+  pendingBeat = 0;
+}
+
+/** The strength (0..1) of a strong beat heard since the last call, or 0. Call it every frame while listening. */
+export function takeBeat(): number {
+  const b = pendingBeat;
+  pendingBeat = 0;
+  return b;
 }
 
 /**
@@ -135,7 +172,13 @@ export function readAudioLevels(out: Float32Array): boolean {
     lastReadAt = now;
     analyser.getByteFrequencyData(spectrum);
     const heard = barsFromSpectrum(spectrum, context.sampleRate, cache, state);
-    if (heard) lastSoundAt = now;
+    if (heard) {
+      lastSoundAt = now;
+      let bass = 0;
+      for (let i = 0; i < 6; i++) bass += cache[i];
+      const beat = detectBeat(bass / 6, beatState, now);
+      if (beat > 0) pendingBeat = Math.max(pendingBeat, beat);
+    }
     lastHeard = now - lastSoundAt < SILENCE_MS;
   }
   if (!lastHeard) return false;
