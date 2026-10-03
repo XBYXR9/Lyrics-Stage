@@ -118,6 +118,14 @@ itself: a pause or resume, a seek (here or from another device), or a jump in th
 blend length. Skips and natural song endings are never touched, and a song whose position we count ourselves
 (Linux) has nothing to correct. Settings → Song transitions → *Keep lyrics in time after a blend* switches it off.
 
+**Stale reports during a mix.** While Spotify mixes into the next song it can answer with the song it just left for a
+moment, between answers about the new one. Taken for a change back, that would flip the lyrics, the clock and the
+animations back and forth (the lyrics restarted several times and ended up out of time). So within 14 s of a change, a
+report of the song just left that puts it where it was when it was left, or later (not more than 4 s earlier, which
+covers a frozen position as well as one that kept counting), is ignored (`BaseEngine.observe`) and noted in the timing
+report. A real change back, like pressing "previous" (the old song then starts from its beginning, far earlier), is
+still followed.
+
 **Finding timing problems.** That correction is a best guess from a known Spotify quirk, so the app keeps a short
 note of what Spotify reports around song changes (`src/lib/timingLog.ts`: each hand-over with how it was classified,
 the blend length and the correction, then the reported position against the app's own clock for about 45 s, and

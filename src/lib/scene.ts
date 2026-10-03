@@ -39,6 +39,28 @@ export function withAlpha(color: string, alpha: number): string {
   return /^hsl\([^/)]*\)$/.test(color) ? color.replace(/\)$/, ` / ${a})`) : color;
 }
 
+/** The hue, saturation and lightness of an album color (`hsl(H S% L%)`), or null for any other kind of color. */
+function parseHsl(color: string): { h: number; s: number; l: number } | null {
+  const m = /^hsl\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%\s*\)$/.exec(color);
+  return m ? { h: Number(m[1]), s: Number(m[2]), l: Number(m[3]) } : null;
+}
+
+/**
+ * Two album colors blended: `t` 0 is `a`, 1 is `b`, in between is a smooth mix (the hue takes the short way round),
+ * with this opacity (0..1). Colors that aren't `hsl(...)` can't be blended: the nearer one is used as it is.
+ */
+export function mixHsl(a: string, b: string, t: number, alpha = 1): string {
+  const x = parseHsl(a);
+  const y = parseHsl(b);
+  const k = Math.min(1, Math.max(0, t));
+  if (!x || !y) return alpha >= 1 ? (k < 0.5 ? a : b) : withAlpha(k < 0.5 ? a : b, alpha);
+  const dh = ((((y.h - x.h) % 360) + 540) % 360) - 180;
+  const h = (((x.h + dh * k) % 360) + 360) % 360;
+  const round = (v: number) => Number(v.toFixed(2));
+  const mixed = `hsl(${round(h)} ${round(x.s + (y.s - x.s) * k)}% ${round(x.l + (y.l - x.l) * k)}%)`;
+  return alpha >= 1 ? mixed : withAlpha(mixed, alpha);
+}
+
 /** How long a ripple takes to spread and fade. */
 export const RIPPLE_MS = 950;
 
