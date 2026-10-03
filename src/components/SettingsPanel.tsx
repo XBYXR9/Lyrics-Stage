@@ -1,11 +1,25 @@
-// Settings: lyric style, timing, text size, background and Automix blending.
-import type { ReactNode } from 'react';
+// Settings: lyric style, timing, text size, background, beat effects and Automix blending.
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useFrame } from '../hooks/hooks';
+import { audioCounting, getAudioStatus, MAX_SOUND_DELAY_MS, peekAudioLoudness, startAudioLevels, subscribeAudioStatus } from '../lib/audioLevels';
+import { BEAT_PREVIEW_EVENT } from '../lib/beat';
 import { desktopApi } from '../lib/desktopTypes';
 import type { EngineKind } from '../lib/engine';
-import { updateSettings, type Settings } from '../lib/settings';
+import { updateSettings, type BeatStyle, type Settings } from '../lib/settings';
 import type { StyleChoice, Vibe } from '../lib/types';
 import { CloseIcon } from './Icons';
 import { STYLES, styleName } from './styles';
+
+const BEAT_STYLES: { id: BeatStyle; name: string; blurb: string }[] = [
+  { id: 'glow', name: 'Glow', blurb: 'A soft glow and ring behind the lyrics.' },
+  { id: 'screen', name: 'Full screen', blurb: 'A soft color wash over the whole screen.' },
+  { id: 'edges', name: 'Edges', blurb: 'The edges of the screen light up.' },
+  { id: 'kick', name: 'Kick', blurb: 'The lyrics bump a little. No light at all.' },
+  { id: 'off', name: 'Off', blurb: 'No flash.' },
+];
+
+/** Shows one sample flash of the chosen style (the main screen paints it). */
+const previewBeat = () => window.dispatchEvent(new Event(BEAT_PREVIEW_EVENT));
 
 export function SettingsPanel({
   settings,
@@ -97,29 +111,55 @@ export function SettingsPanel({
             When the singing pauses, moving bars in the album’s colors keep the beat. A thin line shows when the lyrics
             come back.
           </p>
-          <Toggle
-            checked={settings.beatFlash}
-            onChange={(v) => set({ beatFlash: v })}
-            label="Flash on strong beats in short pauses"
+        </Section>
+
+        <Section title="Beat flash">
+          <div className="bf-grid" role="radiogroup" aria-label="Beat flash style">
+            {BEAT_STYLES.map((b) => (
+              <button
+                key={b.id}
+                role="radio"
+                aria-checked={settings.beatStyle === b.id}
+                className={`style-card bf-${b.id}-card${settings.beatStyle === b.id ? ' selected' : ''}`}
+                onClick={() => {
+                  set({ beatStyle: b.id });
+                  if (b.id !== 'off') setTimeout(previewBeat, 90);
+                }}
+              >
+                <span className="bf-mini" aria-hidden />
+                <span className="sc-name">{b.name}</span>
+                <span className="sc-blurb">{b.blurb}</span>
+              </button>
+            ))}
+          </div>
+          {settings.beatStyle !== 'off' && !settings.reduceMotion && (
+            <button className="btn small" onClick={previewBeat}>
+              Try it
+            </button>
+          )}
+          <p className="hint">
+            Shows on strong beats in the split-second pauses between lines, and on every strong beat in songs without
+            lyrics. Never more than three times a second, soft and tinted (never white). It’s off with Reduce motion.
+          </p>
+        </Section>
+
+        <Section title="Songs without lyrics">
+          <Segmented
+            value={settings.noLyricsVisual}
+            onChange={(v) => set({ noLyricsVisual: v })}
+            options={[
+              { value: 'orb', label: 'Orb' },
+              { value: 'bars', label: 'Equalizer' },
+              { value: 'message', label: 'Just a message' },
+            ]}
           />
           <p className="hint">
-            A soft glow and ring pulse on strong beats in the split-second pauses between lines, at most three times a
-            second. It’s off with Reduce motion.
+            For songs with no lyrics, and instrumentals, a scene in the album’s colors moves with the beat. Big beats get a
+            bigger punch and a shockwave across the screen. It’s a plain message with Reduce motion.
           </p>
-          {settings.breakVisual === 'bars' && desktopApp && platform === 'win32' && (
-            <>
-              <Toggle
-                checked={settings.reactToSound}
-                onChange={(v) => set({ reactToSound: v })}
-                label="Follow the real sound (experimental)"
-              />
-              <p className="hint">
-                Listens to your computer’s sound output, so the bars and the flash hit the real beat. Everything
-                playing is heard, not just Spotify. The sound is analysed inside the app and is never recorded or sent anywhere.
-              </p>
-            </>
-          )}
         </Section>
+
+        {desktopApp && platform === 'win32' && <SoundSection settings={settings} />}
 
         <Section title="Lyrics timing">
           <div className="row">
@@ -307,4 +347,100 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
       <span>{label}</span>
     </label>
   );
+}
+
+/** Windows desktop app: follow the computer's real sound, with a status and a level meter so problems can be seen. */
+function SoundSection({ settings }: { settings: Settings }) {
+  const status = useSyncExternalStore(subscribeAudioStatus, getAudioStatus);
+  const on = settings.soundSync === 'on';
+  let line = 'Not chosen yet. Pick On to try it.';
+  if (settings.soundSync === 'off') line = 'Off. The effects use an estimated rhythm instead.';
+  else if (on) {
+    line =
+      status.state === 'listening'
+        ? 'Listening to your computer’s sound.'
+        : status.state === 'starting'
+          ? 'Starting…'
+          : status.reason ?? 'Not listening yet.';
+  }
+  return (
+    <Section title="Follow your PC’s sound">
+      <Segmented
+        value={settings.soundSync}
+        onChange={(v) => updateSettings({ soundSync: v })}
+        options={[
+          { value: 'on', label: 'On' },
+          { value: 'off', label: 'Off' },
+        ]}
+      />
+      <p className={`hint${on && status.state === 'failed' ? ' warn-text' : ''}`}>{line}</p>
+      {on && status.state === 'listening' && <SoundMeter />}
+      {on && (status.state === 'failed' || status.state === 'waiting') && (
+        <button className="btn small" onClick={() => void startAudioLevels()}>
+          Try again
+        </button>
+      )}
+      <p className="hint">
+        The bars, the beat flash and the no-lyrics scene then hit the real beat. The sound is analysed inside the app and
+        never recorded or sent anywhere.
+      </p>
+      <p className="hint">
+        <b>Only while a song plays:</b> the sound counts only when Spotify is playing and the position is inside the
+        song, so a video or a ping can’t set off the effects while Spotify is paused. Windows can’t share just
+        Spotify’s sound though, so while a song plays, other loud sounds can still nudge them.
+      </p>
+      <div className="row">
+        <input
+          type="range"
+          min={0}
+          max={MAX_SOUND_DELAY_MS}
+          step={10}
+          value={settings.soundDelayMs}
+          onChange={(e) => updateSettings({ soundDelayMs: Number(e.target.value) })}
+          aria-label="Sound delay for Bluetooth headphones"
+        />
+        <span className="value">{settings.soundDelayMs} ms</span>
+        <button className="btn small" onClick={() => updateSettings({ soundDelayMs: 0 })}>
+          Reset
+        </button>
+      </div>
+      <p className="hint">
+        Bluetooth headphones play the sound a moment after the computer sends it. If the effects come too early, slide
+        right until they land on the beat you hear (often 100–250 ms).
+      </p>
+    </Section>
+  );
+}
+
+/** A live level of the computer's sound, and whether it currently counts for the effects. */
+function SoundMeter() {
+  const [counting, setCounting] = useState(audioCounting());
+  const fill = useMeterFill();
+  useFrame(() => {
+    const c = audioCounting();
+    setCounting((prev) => (prev === c ? prev : c));
+  });
+  return (
+    <div className="meter-row">
+      <span className="meter" aria-hidden>
+        <span className="meter-fill" ref={fill} />
+      </span>
+      <span className="meter-note">{counting ? 'Counting for the effects' : 'Ignored: no song is playing'}</span>
+    </div>
+  );
+}
+
+function useMeterFill() {
+  const [el, setEl] = useState<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!el) return;
+    let id = 0;
+    const loop = () => {
+      el.style.transform = `scaleX(${peekAudioLoudness().toFixed(3)})`;
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
+  }, [el]);
+  return setEl;
 }

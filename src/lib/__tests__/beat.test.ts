@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectBeat, newBeatState } from '../audioLevels';
-import { canFlash, FLASH_MS, flashShape, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, shortPauseAt } from '../beat';
+import { beatPlan, canFlash, emitBeat, FLASH_MS, flashShape, inSongWindow, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
 import { buildSynced } from '../lrc';
 import { estimatedBeat, estimatedBpm } from '../pulse';
 
@@ -107,5 +107,55 @@ describe('flash', () => {
     expect(gone.glow).toBe(0);
     expect(gone.ring).toBe(0);
     expect(flashShape(-5, 1).glow).toBe(0);
+  });
+});
+
+describe('the song window', () => {
+  it('is open only while the song is playing and the position is inside it', () => {
+    expect(inSongWindow({ playing: true, positionMs: 30_000, durationMs: 200_000 })).toBe(true);
+    expect(inSongWindow({ playing: true, positionMs: 0, durationMs: 200_000 })).toBe(true);
+    expect(inSongWindow({ playing: false, positionMs: 30_000, durationMs: 200_000 })).toBe(false); // paused
+    expect(inSongWindow({ playing: true, positionMs: 200_000, durationMs: 200_000 })).toBe(false); // the song ended
+    expect(inSongWindow({ playing: true, positionMs: 250_000, durationMs: 200_000 })).toBe(false);
+    expect(inSongWindow({ playing: true, positionMs: -1, durationMs: 200_000 })).toBe(false);
+    expect(inSongWindow({ playing: true, positionMs: NaN, durationMs: 200_000 })).toBe(false);
+  });
+
+  it('does not close for a song whose length is not known yet', () => {
+    expect(inSongWindow({ playing: true, positionMs: 30_000, durationMs: 0 })).toBe(true);
+    expect(inSongWindow({ playing: false, positionMs: 30_000, durationMs: 0 })).toBe(false);
+  });
+});
+
+describe('what the beat code does', () => {
+  const base = { style: 'glow', reduceMotion: false, lyricsKind: 'synced', sceneShown: false } as const;
+
+  it('flashes in the short pauses of a song with synced lyrics', () => {
+    expect(beatPlan(base)).toEqual({ detect: true, flashIn: 'pauses' });
+  });
+
+  it('flashes on every strong beat when the no-lyrics scene is showing, and still feeds the scene when the flash is off', () => {
+    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true })).toEqual({ detect: true, flashIn: 'always' });
+    expect(beatPlan({ ...base, style: 'off', lyricsKind: 'instrumental', sceneShown: true })).toEqual({ detect: true, flashIn: 'never' });
+  });
+
+  it('does nothing with the flash off, without synced lyrics, or with Reduce motion', () => {
+    expect(beatPlan({ ...base, style: 'off' })).toEqual({ detect: false, flashIn: 'never' });
+    expect(beatPlan({ ...base, lyricsKind: 'plain' })).toEqual({ detect: false, flashIn: 'never' });
+    expect(beatPlan({ ...base, lyricsKind: null })).toEqual({ detect: false, flashIn: 'never' });
+    expect(beatPlan({ ...base, reduceMotion: true })).toEqual({ detect: false, flashIn: 'never' });
+    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true, reduceMotion: true })).toEqual({ detect: false, flashIn: 'never' });
+  });
+});
+
+describe('the beat bus', () => {
+  it('tells everyone who listens, until they stop', () => {
+    const heard: number[] = [];
+    const stop = onBeat((s) => heard.push(s));
+    emitBeat(0.5);
+    emitBeat(1);
+    stop();
+    emitBeat(0.2);
+    expect(heard).toEqual([0.5, 1]);
   });
 });

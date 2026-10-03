@@ -5,6 +5,12 @@ import type { StyleChoice } from './types';
 export type BackgroundMode = 'art' | 'fluid';
 export type WordSweep = 'estimated' | 'real-only' | 'off';
 export type BreakVisualChoice = 'bars' | 'dots';
+/** How a strong beat shows: nothing, a glow and ring behind the lyrics, a wash over the whole screen, a glowing screen edge, or a little kick of the lyrics. */
+export type BeatStyle = 'off' | 'glow' | 'screen' | 'edges' | 'kick';
+/** What to show for a song without lyrics: a pulsing orb, a mirrored equalizer, or just the message. */
+export type NoLyricsVisual = 'orb' | 'bars' | 'message';
+/** Windows desktop app: follow the computer's real sound. "ask" = not chosen yet (the app asks once). */
+export type SoundSync = 'ask' | 'on' | 'off';
 
 export interface Settings {
   /** Which lyric style to use ("auto" picks one per song). */
@@ -21,10 +27,14 @@ export interface Settings {
   automixBlend: boolean;
   /** What to show during instrumental breaks: moving bars, or the three dots. */
   breakVisual: BreakVisualChoice;
-  /** Windows desktop app: make the bars follow the real sound instead of an estimated rhythm. */
-  reactToSound: boolean;
-  /** A soft flash on strong beats in the short pauses between lines. */
-  beatFlash: boolean;
+  /** Windows desktop app: make the bars, the flash and the no-lyrics scene follow the computer's real sound (only while the song plays). */
+  soundSync: SoundSync;
+  /** Wait this long before the effects react to the sound (0–500 ms), for Bluetooth headphones. */
+  soundDelayMs: number;
+  /** How strong beats show in the short pauses between lines, and in a song without lyrics. */
+  beatStyle: BeatStyle;
+  /** What to show while a song has no lyrics (or is instrumental). */
+  noLyricsVisual: NoLyricsVisual;
   /** Tone down movement and blur. */
   reduceMotion: boolean;
   /** Hide the player controls and show only lyrics. */
@@ -46,17 +56,34 @@ export const DEFAULT_SETTINGS: Settings = {
   wordSweep: 'estimated',
   automixBlend: true,
   breakVisual: 'bars',
-  reactToSound: false,
-  beatFlash: true,
+  soundSync: 'ask',
+  soundDelayMs: 0,
+  beatStyle: 'glow',
+  noLyricsVisual: 'orb',
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,
   alwaysOnTop: false,
 };
 
+/**
+ * Saved settings from an older version, brought up to date. Version 0.5.0 had a
+ * plain on/off switch for the beat flash (`beatFlash`) and one for following the
+ * real sound (`reactToSound`): whoever turned the flash off keeps it off, and
+ * whoever turned the sound on keeps it on.
+ */
+export function migrateSettings(stored: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...stored };
+  if (next.beatFlash === false && next.beatStyle === undefined) next.beatStyle = 'off';
+  if (next.reactToSound === true && next.soundSync === undefined) next.soundSync = 'on';
+  delete next.beatFlash;
+  delete next.reactToSound;
+  return next;
+}
+
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
+    return raw ? { ...DEFAULT_SETTINGS, ...migrateSettings(JSON.parse(raw)) } : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }

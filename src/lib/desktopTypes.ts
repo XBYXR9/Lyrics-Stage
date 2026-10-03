@@ -90,6 +90,8 @@ export interface LyricsStageDesktopApi {
   /** Opens the Spotify app — on its search page when `query` is given. */
   openSpotify(query?: string): Promise<void>;
   setAlwaysOnTop(on: boolean): Promise<void>;
+  /** Windows: how the next "listen to the sound" request is answered, with the app's own page (default) or a screen source as the picture that goes with it. */
+  setSoundSource(kind: 'frame' | 'screen'): Promise<void>;
   /** Current update status right away, then every change. Returns an unsubscribe function. */
   onUpdate(cb: (s: UpdateStatus) => void): () => void;
   /** Restarts into the downloaded update. */

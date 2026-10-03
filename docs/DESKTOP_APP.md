@@ -104,7 +104,7 @@ badge and crossfades the lyrics for exactly as long as the songs overlap.
 | Spotify volume (− / +) | ✅ | ✅ through Windows' Volume Mixer | ⚠️ depends on the Spotify version |
 | Follow your phone or a speaker | with **Sign in with Spotify** | with **Sign in with Spotify** | with **Sign in with Spotify** |
 | Automix / Crossfade blends | ✅ | ✅ | ✅ |
-| Break visualizer follows the real sound | ❌ (estimated rhythm) | ✅ opt-in | ❌ (estimated rhythm) |
+| Effects follow the real sound (bars, flash, no-lyrics scene) | ❌ (estimated rhythm) | ✅ opt-in | ❌ (estimated rhythm) |
 
 **Windows volume note:** Windows' media controls have no volume, so the volume buttons move Spotify's slider in
 Windows' **Volume Mixer** (not the slider inside Spotify). The first press takes a second while a small helper starts.
@@ -124,18 +124,38 @@ Spotify doesn't share beat or tempo data with apps like this one, so by default 
 rhythm**: its speed comes from how energetic the song feels (rap and dance songs are fast, ballads slow). It looks like
 a beat, but it isn't locked to the real one.
 
-**Beat flash:** in the split-second pauses between lines (a gap of 0.25 s up to a long break), a soft glow and ring in
-the album's colors pulse on strong beats, never more than three a second. Off with **Reduce motion** or in Settings.
-Without the real sound it flashes on the first and third beat of each bar of the estimated rhythm, so it can be a
-little off the real beat.
+**Beat flash:** on strong beats in the split-second pauses between lines (a gap of 0.25 s up to a long break), the
+album's colors flash in the style you pick in Settings → **Beat flash**: **Glow** (a soft glow and ring behind the
+lyrics), **Full screen** (a soft color wash), **Edges** (the screen's edges light up), **Kick** (the lyrics bump a
+little, no light at all) or **Off**. Never more than three a second, tinted and soft (never white). Off with **Reduce
+motion**. Without the real sound it flashes on the first and third beat of each bar of the estimated rhythm, so it can
+be a little off the real beat.
 
-**Windows only, optional:** Settings → Instrumental breaks → **Follow the real sound (experimental)** makes the bars
-and the flash follow the actual music (a flash fires when the bass jumps well above its recent average, like a kick
-drum). The app asks Windows for a copy of the sound going to the speakers (`electron/main.ts`) and
-analyses it in the page (`src/lib/audioLevels.ts`). Everything playing on the computer is heard, not just Spotify. The
-sound is analysed on the spot and thrown away: never recorded, saved or sent anywhere. Windows may need a click or key
-press in the app before it shares the sound. If it can't, or the sound is silent, the bars use the estimated rhythm.
-This isn't available on macOS and Linux, where the app can't capture system sound.
+**Songs without lyrics:** when a song has no lyrics, or is an instrumental, the lyrics area shows a scene instead of a
+message: a pulsing **orb** with bars around it, or a mirrored **equalizer** (Settings → **Songs without lyrics**; "Just a
+message" turns it off, and so does Reduce motion). Every strong beat punches it. A *big* beat (a hard kick) punches
+harder and sends a shockwave across most of the screen, and the beat flash fires on every strong beat there, not only in
+pauses. Try it in the demo with the instrumental "Midnight Loop".
+
+### Following the real sound (Windows only, optional)
+
+Settings → **Follow your PC's sound**, or the one-time question the app asks, makes the bars, the flash and the scene
+follow the actual music (a flash fires when the bass jumps well above its recent average, like a kick drum). The app
+asks Windows for a copy of the sound going to the speakers (`electron/main.ts`) and analyses it in the page
+(`src/lib/audioLevels.ts`). The sound is analysed on the spot and thrown away: never recorded, saved or sent anywhere.
+
+- **Only while the song plays.** Windows can't share just Spotify's sound, so the app hears everything the computer
+  plays. To keep other sounds from setting anything off, the sound only counts inside the song's *playback window*:
+  Spotify is playing and the position is inside the song. While Spotify is paused, between songs or during an ad, the
+  sound is ignored completely (the app doesn't even look at it). While a song plays, other loud sounds can still nudge
+  the effects; that can't be avoided without a native helper.
+- **Bluetooth headphones** play the sound a moment after the computer sends it. Slide **Sound delay** until the
+  effects land on the beat you hear (often 100–250 ms).
+- **Status and meter.** Settings shows whether it's listening, why not if it isn't, and a live level meter that says
+  whether the sound currently counts. Windows may need a click or key press in the app before it shares the sound, and
+  "Try again" retries (with a screen source as a second way, which some setups need).
+- If it can't listen, or the sound is silent for a while, the effects use the estimated rhythm. This isn't available on
+  macOS and Linux, where the app can't capture system sound.
 
 ## How it connects to Spotify
 

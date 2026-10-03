@@ -7,10 +7,11 @@ import { useLyrics, usePalette } from '../hooks/hooks';
 import { FixedClock, type Clock } from '../lib/clock';
 import type { Engine, TrackChange } from '../lib/engine';
 import type { Settings } from '../lib/settings';
+import { showsScene } from '../lib/scene';
 import { visualTransitionMs } from '../lib/transitions';
 import type { TrackInfo, TransitionKind } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
-import { BeatFlash } from './BeatFlash';
+import { BeatScene } from './BeatScene';
 import { PlainLyrics } from './PlainLyrics';
 import { STYLE_BY_ID } from './styles';
 import { BreakVisualContext, Dots } from './styles/Dots';
@@ -120,6 +121,9 @@ function LyricsLayer({
     [settings.breakVisual, vibe.energy, settings.reduceMotion],
   );
 
+  // Songs without lyrics (or instrumentals) get the beat scene, unless the user chose just a message.
+  const sceneKind = showsScene(lyrics?.kind ?? 'none', settings.noLyricsVisual, settings.reduceMotion) ? settings.noLyricsVisual : null;
+
   let body;
   if (loading || !ready) {
     body = <Message title="Finding lyrics…" icon={<Dots className="msg-dots is-loading" />} />;
@@ -132,22 +136,30 @@ function LyricsLayer({
       </Message>
     );
   } else if (!lyrics || lyrics.kind === 'none') {
-    body = (
-      <Message
-        title="No lyrics for this one"
-        subtitle={
-          <>
-            Lyrics come from{' '}
-            <a href="https://lrclib.net" target="_blank" rel="noreferrer">
-              LRCLIB
-            </a>
-            , a free community database — anyone can add missing songs.
-          </>
-        }
-      />
+    const title = 'No lyrics for this one';
+    const subtitle = (
+      <>
+        Lyrics come from{' '}
+        <a href="https://lrclib.net" target="_blank" rel="noreferrer">
+          LRCLIB
+        </a>
+        , a free community database — anyone can add missing songs.
+      </>
     );
+    body =
+      sceneKind === 'orb' || sceneKind === 'bars' ? (
+        <BeatScene visual={sceneKind} palette={palette} clock={layer.clock} energy={vibe.energy} title={title} subtitle={subtitle} />
+      ) : (
+        <Message title={title} subtitle={subtitle} />
+      );
   } else if (lyrics.kind === 'instrumental') {
-    body = <Message title="Instrumental" subtitle="Just vibes — no words in this one." icon={<span className="msg-note">♪</span>} />;
+    const subtitle = 'Just vibes — no words in this one.';
+    body =
+      sceneKind === 'orb' || sceneKind === 'bars' ? (
+        <BeatScene visual={sceneKind} palette={palette} clock={layer.clock} energy={vibe.energy} title="Instrumental" subtitle={subtitle} />
+      ) : (
+        <Message title="Instrumental" subtitle={subtitle} icon={<span className="msg-note">♪</span>} />
+      );
   } else if (lyrics.kind === 'plain') {
     body = <PlainLyrics lyrics={lyrics} clock={layer.clock} durationMs={track.durationMs} />;
   } else {
@@ -184,10 +196,6 @@ function LyricsLayer({
       }
       aria-hidden={!live}
     >
-      {/* behind the lyrics: a soft flash on strong beats in the short pauses between lines */}
-      {live && settings.beatFlash && !settings.reduceMotion && lyrics?.kind === 'synced' && (
-        <BeatFlash lyrics={lyrics} clock={layer.clock} offsetMs={settings.offsetMs} energy={vibe.energy} />
-      )}
       <BreakVisualContext.Provider value={breakVisual}>{body}</BreakVisualContext.Provider>
     </div>
   );
