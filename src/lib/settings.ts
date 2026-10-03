@@ -27,6 +27,8 @@ export interface Settings {
   automixBlend: boolean;
   /** After Automix / Crossfade, take the blend length off the position Spotify reports (it's ahead until you pause or seek). */
   fixBlendTiming: boolean;
+  /** After a blend, pause and resume the music for a split second so Spotify reports the right position again. */
+  resyncAfterBlend: boolean;
   /** What to show during instrumental breaks: moving bars, or the three dots. */
   breakVisual: BreakVisualChoice;
   /** Windows desktop app: make the bars, the flash and the no-lyrics scene follow the computer's real sound (only while the song plays). */
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wordSweep: 'estimated',
   automixBlend: true,
   fixBlendTiming: true,
+  resyncAfterBlend: true,
   breakVisual: 'bars',
   soundSync: 'ask',
   soundDelayMs: 0,

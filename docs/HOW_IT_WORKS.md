@@ -118,6 +118,20 @@ itself: a pause or resume, a seek (here or from another device), or a jump in th
 blend length. Skips and natural song endings are never touched, and a song whose position we count ourselves
 (Linux) has nothing to correct. Settings → Song transitions → *Keep lyrics in time after a blend* switches it off.
 
+**Re-sync after a blend (`BaseEngine.resync`, `src/lib/blendBias.ts`).** Spotify's own apps have this bug too: after a
+blend, the position of the new song stays wrong until Spotify refreshes it, and people fix it by seeking or by pausing
+and playing again. By how much it is wrong isn't known and differs between setups, so guessing it from the old song's
+remaining time wasn't enough. Now, 6 s after a `blend` (and only then), the app pauses and resumes the music for a split
+second (the Web API's pause and play, or the Spotify app's own commands in the desktop app), waits 2 s for Spotify's
+server to settle, and compares the position it then reports with where the earlier reports said the song would be. The
+difference is the real error; from then on the lyrics follow Spotify's refreshed reports. Each measurement is stored
+next to the two guesses made when the blend was seen (`first-report`: the position of the new song when it showed up;
+`old-song`: how much of the old song was left). When one guess has been right on the last three blends, the app uses it
+and stops pausing the music, checking again every fourth blend; if it stops fitting, pausing starts again. The re-sync
+is skipped when someone pauses or seeks first, near the end of a song, without Premium (403: not tried again), for
+the browser's own player (its positions are exact) and where the Spotify app gives no position (Linux). Settings → Song
+transitions → *Re-sync the timing after a blend* switches it off.
+
 **Stale reports during a mix.** While Spotify mixes into the next song it can answer with the song it just left for a
 moment, between answers about the new one. Taken for a change back, that would flip the lyrics, the clock and the
 animations back and forth (the lyrics restarted several times and ended up out of time). So within 14 s of a change, a
@@ -128,8 +142,8 @@ still followed.
 
 **Finding timing problems.** That correction is a best guess from a known Spotify quirk, so the app keeps a short
 note of what Spotify reports around song changes (`src/lib/timingLog.ts`: each hand-over with how it was classified,
-the blend length and the correction, then the reported position against the app's own clock for about 45 s, and
-when the correction was dropped; in the desktop app signed in, also what the Spotify app on the computer reports).
+the blend length and the correction, then the reported position against the app's own clock for about 45 s, when
+the correction was dropped, and each re-sync: the error it measured and what it has learned; in the desktop app signed in, also what the Spotify app on the computer reports).
 Settings → *Copy timing report* copies it as text, with the version, the source and the settings. For a bad song in
 the meantime, `,` and `.` nudge the lyrics later or earlier for that song only (`src/lib/nudge.ts`, 0.5 s a step,
 Shift: 0.1 s, up to 30 s), without touching the music; it ends with the song.

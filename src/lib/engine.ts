@@ -13,6 +13,7 @@ import { PlaybackClock, type Clock } from './clock';
 import { loadSdk, sdkPosition, type SdkPlayer, type SdkState, type SdkTrack } from './sdk';
 import { friendlyError, pickImages, spotify, SpotifyError, toTrackInfo, type ApiDevice, type ApiTrack } from './spotify';
 import { isWatchingTiming, logTiming, sec, signedSec, watchTiming } from './timingLog';
+import { BlendBiasLearner, loadBiasSamples, ruleValue, saveBiasSamples } from './blendBias';
 import { BlendLearner, classifyTransition } from './transitions';
 import type { TrackInfo, TransitionInfo } from './types';
 
@@ -97,6 +98,10 @@ export interface Engine {
   coverFailed?(url: string): void;
   /** Take the blend length off the song position Spotify reports after an Automix or Crossfade hand-over (see BaseEngine). */
   setBlendTimingFix(on: boolean): void;
+  /** After a blend, pause and resume the music for a split second so Spotify reports the right position again (see BaseEngine). */
+  setResyncAfterBlend(on: boolean): void;
+  /** What the app has learned about Spotify's position after blends, for the timing report. */
+  describeBlendBias(): string;
 }
 
 export const BROWSER_PLAYER_NAME = 'Lyrics Stage';
@@ -143,6 +148,28 @@ const STALE_REPORT_TOLERANCE_MS = 4000;
  */
 const biasResetJumpMs = (biasMs: number) => Math.max(800, Math.min(1500, biasMs * 0.6));
 
+/** How long after a blend to re-sync: the songs are no longer overlapping, and the new song's lyrics are about to start. */
+const RESYNC_DELAY_MS = 6000;
+/** Not worth a pause right before the song ends. */
+const RESYNC_MIN_REMAINING_MS = 15_000;
+/**
+ * How long to wait after the music resumed before looking at the position: Spotify's server can answer with its
+ * old state for a moment, and only the report after it has settled shows the refreshed position.
+ */
+const RESYNC_SETTLE_MS = 2000;
+/** How much longer to wait for that report. */
+const RESYNC_REPORT_TIMEOUT_MS = 3000;
+/** A measured error beyond these can't be trusted (something else changed the position meanwhile). */
+const RESYNC_MAX_AHEAD_MS = 30_000;
+const RESYNC_MAX_BEHIND_MS = 15_000;
+
+/** What an engine knows about its last position report. */
+interface Report {
+  pos: number;
+  at: number;
+  playing: boolean;
+}
+
 /** Shared bits for all engines: state, listeners and song-change detection. */
 export abstract class BaseEngine {
   abstract readonly kind: EngineKind;
@@ -183,16 +210,141 @@ export abstract class BaseEngine {
    */
   private lastLeft: { key: string; name: string; pos: number; at: number; durationMs: number } | null = null;
   /** The last position Spotify reported, to notice when it corrects itself. */
-  private lastReport: { pos: number; at: number; playing: boolean } | null = null;
+  private lastReport: Report | null = null;
 
   setBlendTimingFix(on: boolean) {
     this.fixBlendTiming = on;
     if (!on) this.positionBiasMs = 0;
   }
 
+  // ------------------------------------------------------------- re-sync
+
+  /**
+   * Spotify's own apps have the same problem: after a blend the position of the new song stays wrong until Spotify
+   * refreshes it, and pausing and resuming (or seeking) does exactly that. By how much it is wrong isn't known and
+   * differs between setups, so a few seconds after a blend the app pauses and resumes the music for a split second,
+   * gets the right position, and learns the difference (see blendBias.ts). Once a way of guessing it has been right
+   * a few times in a row, the music is left alone and the guess is used.
+   */
+  private resyncEnabled = true;
+  private resyncTimer: ReturnType<typeof setTimeout> | undefined;
+  private resyncPlan: { key: string; first: number; old: number } | null = null;
+  private resyncing = false;
+  private reportWaiters: ((r: Report) => void)[] = [];
+  protected biasLearner = new BlendBiasLearner(loadBiasSamples(), saveBiasSamples);
+
+  setResyncAfterBlend(on: boolean) {
+    this.resyncEnabled = on;
+    if (!on) this.cancelResync('switched off');
+  }
+
+  describeBlendBias() {
+    return `${this.resyncEnabled ? 'on' : 'off'} ${this.biasLearner.describe()}`;
+  }
+
+  /** Can the music be paused and resumed from here, with positions we can believe? Engines turn it on. */
+  protected canResync(): boolean {
+    return false;
+  }
+  protected async sendPause(): Promise<void> {
+    throw new Error('not supported');
+  }
+  protected async sendResume(): Promise<void> {
+    throw new Error('not supported');
+  }
+  /** Ask for a fresh report soon (the Web API is only asked about once a second). */
+  protected askForReport(): void {}
+  /** The re-sync can't work from here (e.g. Spotify said no): stop trying. */
+  protected resyncBlocked = false;
+
+  protected cancelResync(why: string) {
+    clearTimeout(this.resyncTimer);
+    if (this.resyncPlan) logTiming(`re-sync cancelled: ${why}`);
+    this.resyncPlan = null;
+  }
+
+  private scheduleResync(key: string, transition: TransitionInfo, reported: boolean) {
+    this.cancelResync('another song change');
+    if (!this.resyncEnabled || !reported || transition.kind !== 'blend' || this.resyncBlocked || !this.canResync()) return;
+    if (this.biasLearner.plan() === 'trust') {
+      logTiming(`re-sync skipped: the error is guessed well enough lately (${this.biasLearner.describe()})`);
+      return;
+    }
+    this.resyncPlan = { key, first: transition.startOffsetMs, old: transition.overlapMs };
+    this.resyncTimer = setTimeout(() => void this.resync(), RESYNC_DELAY_MS);
+  }
+
+  private nextReport(after: number, timeoutMs: number): Promise<Report | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.reportWaiters = this.reportWaiters.filter((w) => w !== waiter);
+        resolve(null);
+      }, timeoutMs);
+      const waiter = (r: Report) => {
+        if (!r.playing || r.at <= after) {
+          this.reportWaiters.push(waiter);
+          return;
+        }
+        clearTimeout(timer);
+        resolve(r);
+      };
+      this.reportWaiters.push(waiter);
+    });
+  }
+
+  private async resync() {
+    const plan = this.resyncPlan;
+    this.resyncPlan = null;
+    if (!plan || this.resyncing) return;
+    const track = this.state.track;
+    const before = this.lastReport;
+    const skip = (why: string) => logTiming(`re-sync skipped: ${why}`);
+    if (!this.resyncEnabled || !this.canResync()) return skip('not possible now');
+    if (!track || track.key !== plan.key) return skip('the song changed');
+    if (this.state.status !== 'playing' || !this.clock.playing || !before?.playing) return skip('the music is not playing');
+    if (track.durationMs - this.clock.now() < RESYNC_MIN_REMAINING_MS) return skip('the song is nearly over');
+
+    this.resyncing = true;
+    try {
+      const sentAt = performance.now();
+      await this.sendPause();
+      // Spotify refreshes its state now: from here on, take reports as they are.
+      this.positionBiasMs = 0;
+      try {
+        await this.sendResume();
+      } catch {
+        await this.sendResume(); // never leave the music paused because of us
+      }
+      const resumedAt = performance.now();
+      // The music was silent from about the middle of the pause request to the middle of the resume request.
+      const gapMs = (resumedAt - sentAt) / 2;
+      this.askForReport();
+      const report = await this.nextReport(resumedAt + RESYNC_SETTLE_MS, RESYNC_SETTLE_MS + RESYNC_REPORT_TIMEOUT_MS);
+      if (!report) return logTiming('re-sync: Spotify did not report after the pause');
+      // Where the old reports said the song would be by now, had the music not stopped, against where it really is.
+      const expected = before.pos + (report.at - before.at);
+      const b = Math.round(expected - gapMs - report.pos);
+      const rule = this.biasLearner.trustedRule();
+      logTiming(
+        `RE-SYNC measured error=${signedSec(b)}s (guessed first-report=${sec(plan.first)}s, old-song=${sec(plan.old)}s; ` +
+          `paused for about ${sec(gapMs)}s; trusted before: ${rule ?? 'none'})`,
+      );
+      if (b > RESYNC_MAX_AHEAD_MS || b < -RESYNC_MAX_BEHIND_MS) return logTiming('re-sync: that does not look right, not learning from it');
+      this.biasLearner.record({ b, first: plan.first, old: plan.old });
+      logTiming(`learned: ${this.biasLearner.describe()}`);
+    } catch (err) {
+      // 403: Spotify doesn't allow it (no Premium, or this device can't be controlled): no point in trying again.
+      if ((err as { status?: number })?.status === 403) this.resyncBlocked = true;
+      logTiming(`re-sync failed: ${err instanceof Error ? err.message : String(err)}${this.resyncBlocked ? ' (will not try again)' : ''}`);
+    } finally {
+      this.resyncing = false;
+    }
+  }
+
   /** Spotify's state is refreshed by a seek, so the blend length no longer applies. */
   protected clearPositionBias() {
     this.positionBiasMs = 0;
+    if (!this.resyncing) this.cancelResync('you sought');
   }
 
   /**
@@ -226,7 +378,12 @@ export abstract class BaseEngine {
           })
         : { kind: 'initial', overlapMs: 0, startOffsetMs: reportedMs };
       this.lastLeft = prev ? { key: prev.key, name: prev.name, pos: this.clock.raw(measuredAt), at: measuredAt, durationMs: prev.durationMs } : null;
-      this.positionBiasMs = reported && this.fixBlendTiming && transition.kind === 'blend' ? transition.overlapMs : 0;
+      // The blend length (how much of the old song was left) unless the app has learned a better guess.
+      const rule = this.biasLearner.trustedRule() ?? 'old-song';
+      this.positionBiasMs =
+        reported && this.fixBlendTiming && transition.kind === 'blend'
+          ? Math.max(0, ruleValue(rule, { first: transition.startOffsetMs, old: transition.overlapMs }))
+          : 0;
       const positionMs = Math.max(0, reportedMs - this.positionBiasMs);
       logTiming(
         `CHANGE ${this.kind}: "${prev?.name ?? '-'}" (clock ${sec(clockBefore)} of ${sec(prev?.durationMs)}) -> "${track.name}" (length ${sec(track.durationMs)}) ` +
@@ -247,9 +404,14 @@ export abstract class BaseEngine {
         change: { seq: this.state.change.seq + 1, track, previous: prev, transition, ghost },
       });
       this.onTrackChanged();
+      this.scheduleResync(track.key, transition, reported);
     } else {
       // A pause or resume, or a jump in what Spotify reports (a seek, from here or another device), means it
       // refreshed its state: the position is right again, so stop taking the blend length off.
+      if (this.resyncPlan && !this.resyncing && last) {
+        const expected = last.playing ? last.pos + (measuredAt - last.at) : last.pos;
+        if (playing !== last.playing || Math.abs(reportedMs - expected) > 1500) this.cancelResync('Spotify was paused, resumed or sought by someone else');
+      }
       if (this.positionBiasMs > 0 && last) {
         const expected = last.playing ? last.pos + (measuredAt - last.at) : last.pos;
         const why = !reported
@@ -278,6 +440,11 @@ export abstract class BaseEngine {
     }
     this.lastReport = { pos: reportedMs, at: measuredAt, playing };
     this.lastReportAt = measuredAt;
+    if (this.reportWaiters.length) {
+      const waiters = this.reportWaiters;
+      this.reportWaiters = [];
+      waiters.forEach((w) => w(this.lastReport!));
+    }
   }
 }
 
@@ -327,6 +494,20 @@ export class SpotifyEngine extends BaseEngine implements Engine {
     if (!this.sdkActive) void this.refreshQueue();
   }
 
+  // The re-sync (see BaseEngine): not in this browser's own player, whose positions are exact.
+  protected canResync() {
+    return !this.sdkActive && this.state.device?.isActive !== false;
+  }
+  protected async sendPause() {
+    await spotify.pause();
+  }
+  protected async sendResume() {
+    await spotify.play(undefined);
+  }
+  protected askForReport() {
+    this.pokeSoon(200);
+  }
+
   private player: SdkPlayer | null = null;
   /** True while this browser tab is the device Spotify is playing on. */
   private sdkActive = false;
@@ -348,6 +529,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
 
   stop() {
     this.running = false;
+    this.cancelResync('stopped');
     clearTimeout(this.timer);
     clearInterval(this.sdkTimer);
     this.player?.disconnect();

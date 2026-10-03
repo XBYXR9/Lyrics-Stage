@@ -78,9 +78,21 @@ export class DesktopEngine extends BaseEngine implements Engine {
   }
 
   stop() {
+    this.cancelResync('stopped');
     this.off?.();
     this.off = null;
     clearTimeout(this.waitTimer);
+  }
+
+  // The re-sync (see BaseEngine): only where the Spotify app tells us the position (not Linux).
+  protected canResync() {
+    return this.state.spotifyApp?.exactPosition === true;
+  }
+  protected async sendPause() {
+    await this.send({ type: 'pause' });
+  }
+  protected async sendResume() {
+    await this.send({ type: 'play' });
   }
 
   /** Handles one snapshot from the Spotify app. Public for tests. */
