@@ -137,9 +137,14 @@ export function SettingsPanel({
               Try it
             </button>
           )}
+          <Toggle
+            checked={settings.flashOnBigBeats}
+            onChange={(v) => set({ flashOnBigBeats: v })}
+            label="Big beats glow even while singing"
+          />
           <p className="hint">
             Shows on strong beats in the split-second pauses between lines, and on every strong beat in songs without
-            lyrics. Never more than three times a second, soft and tinted (never white). It’s off with Reduce motion.
+            lyrics. With <b>Follow your PC’s sound</b> (Windows), big beats also glow while someone is singing. Never more than three times a second, soft and tinted (never white). It’s off with Reduce motion.
           </p>
         </Section>
 
@@ -222,6 +227,16 @@ export function SettingsPanel({
             When Spotify mixes one song into the next, the lyrics and colors crossfade for exactly as long as the songs
             overlap.
             {typicalBlendMs ? ` Your blends so far last about ${(typicalBlendMs / 1000).toFixed(1)}s.` : ''}
+          </p>
+          <Toggle
+            checked={settings.fixBlendTiming}
+            onChange={(v) => set({ fixBlendTiming: v })}
+            label="Keep lyrics in time after a blend"
+          />
+          <p className="hint">
+            After Spotify mixes into the next song by itself, it can report the song position ahead by the length of the
+            blend, so the lyrics run early until you pause or seek. This takes that off for you. If the lyrics come
+            late after a blend instead, switch it off.
           </p>
           <p className="hint">
             <b>Turn on Automix:</b> in the Spotify app, click your profile picture → <b>Settings</b> → <b>Playback</b> →

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectBeat, newBeatState } from '../audioLevels';
-import { beatPlan, canFlash, emitBeat, FLASH_MS, flashShape, inSongWindow, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
+import { BIG_BEAT, beatPlan, canFlash, emitBeat, FLASH_MS, flashShape, inSongWindow, isBigBeat, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
 import { buildSynced } from '../lrc';
 import { estimatedBeat, estimatedBpm } from '../pulse';
 
@@ -77,14 +77,27 @@ describe('strong beats', () => {
   });
 
   it('never counts two beats within 250 ms, and a harder hit is stronger', () => {
-    const state = { avg: 0.2, lastAt: -Infinity };
-    expect(detectBeat(0.9, state, 1000)).toBeGreaterThan(0);
+    const state = { avg: 0.2, lastAt: -Infinity, peak: 0 };
+    expect(detectBeat(0.9, state, 1000)).toBe(1); // the hardest kick so far
     expect(detectBeat(0.1, state, 1050)).toBe(0);
-    expect(detectBeat(0.95, state, 1100)).toBe(0);
-    const soft = detectBeat(0.45, { avg: 0.2, lastAt: -Infinity }, 5000);
-    const hard = detectBeat(0.95, { avg: 0.2, lastAt: -Infinity }, 5000);
-    expect(hard).toBeGreaterThan(soft);
-    expect(hard).toBeLessThanOrEqual(1);
+    expect(detectBeat(0.95, state, 1100)).toBe(0); // too soon after the last beat
+    const soft = detectBeat(0.5, state, 2000);
+    expect(soft).toBeGreaterThan(0);
+    expect(soft).toBeLessThan(0.7); // a soft hit is not a big beat
+    expect(detectBeat(0.92, state, 3000)).toBeGreaterThanOrEqual(0.7); // back to a hard kick
+  });
+
+  it('rates kicks against the loudest recent ones, so a steady groove still has big beats', () => {
+    const state = newBeatState();
+    const strengths: number[] = [];
+    // 6 seconds at 60 frames a second: bass at 0.15 with a hard kick every 500 ms
+    for (let f = 0; f < 360; f++) {
+      const kick = f % 30 < 3;
+      const s = detectBeat(kick ? 0.9 : 0.15, state, f * 16.7);
+      if (s > 0) strengths.push(s);
+    }
+    expect(strengths.length).toBeGreaterThanOrEqual(10);
+    expect(strengths.filter((s) => s >= 0.7).length).toBeGreaterThanOrEqual(strengths.length - 1);
   });
 });
 
@@ -128,23 +141,40 @@ describe('the song window', () => {
 });
 
 describe('what the beat code does', () => {
-  const base = { style: 'glow', reduceMotion: false, lyricsKind: 'synced', sceneShown: false } as const;
+  const base = { style: 'glow', reduceMotion: false, lyricsKind: 'synced', sceneShown: false, bigBeats: true } as const;
 
-  it('flashes in the short pauses of a song with synced lyrics', () => {
-    expect(beatPlan(base)).toEqual({ detect: true, flashIn: 'pauses' });
+  it('flashes in the short pauses of a song with synced lyrics, and lets big beats glow anywhere', () => {
+    expect(beatPlan(base)).toEqual({ detect: true, flashIn: 'pauses', bigAnywhere: true });
+    expect(beatPlan({ ...base, bigBeats: false })).toEqual({ detect: true, flashIn: 'pauses', bigAnywhere: false });
+  });
+
+  it('lets big beats glow even without synced lyrics (plain text, or still loading)', () => {
+    expect(beatPlan({ ...base, lyricsKind: 'plain' })).toEqual({ detect: true, flashIn: 'never', bigAnywhere: true });
+    expect(beatPlan({ ...base, lyricsKind: null })).toEqual({ detect: true, flashIn: 'never', bigAnywhere: true });
+    expect(beatPlan({ ...base, lyricsKind: 'plain', bigBeats: false })).toEqual({ detect: false, flashIn: 'never', bigAnywhere: false });
   });
 
   it('flashes on every strong beat when the no-lyrics scene is showing, and still feeds the scene when the flash is off', () => {
-    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true })).toEqual({ detect: true, flashIn: 'always' });
-    expect(beatPlan({ ...base, style: 'off', lyricsKind: 'instrumental', sceneShown: true })).toEqual({ detect: true, flashIn: 'never' });
+    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true })).toEqual({ detect: true, flashIn: 'always', bigAnywhere: false });
+    expect(beatPlan({ ...base, style: 'off', lyricsKind: 'instrumental', sceneShown: true })).toEqual({
+      detect: true,
+      flashIn: 'never',
+      bigAnywhere: false,
+    });
   });
 
-  it('does nothing with the flash off, without synced lyrics, or with Reduce motion', () => {
-    expect(beatPlan({ ...base, style: 'off' })).toEqual({ detect: false, flashIn: 'never' });
-    expect(beatPlan({ ...base, lyricsKind: 'plain' })).toEqual({ detect: false, flashIn: 'never' });
-    expect(beatPlan({ ...base, lyricsKind: null })).toEqual({ detect: false, flashIn: 'never' });
-    expect(beatPlan({ ...base, reduceMotion: true })).toEqual({ detect: false, flashIn: 'never' });
-    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true, reduceMotion: true })).toEqual({ detect: false, flashIn: 'never' });
+  it('does nothing with the flash off or with Reduce motion', () => {
+    const none = { detect: false, flashIn: 'never', bigAnywhere: false };
+    expect(beatPlan({ ...base, style: 'off' })).toEqual(none);
+    expect(beatPlan({ ...base, reduceMotion: true })).toEqual(none);
+    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true, reduceMotion: true })).toEqual(none);
+  });
+
+  it('calls a beat big from 0.7 up', () => {
+    expect(BIG_BEAT).toBe(0.7);
+    expect(isBigBeat(0.69)).toBe(false);
+    expect(isBigBeat(0.7)).toBe(true);
+    expect(isBigBeat(1)).toBe(true);
   });
 });
 
