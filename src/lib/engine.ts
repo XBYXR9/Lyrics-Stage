@@ -73,6 +73,8 @@ export interface Engine {
   readonly isDemo: boolean;
   /** "results": search shows songs you can play here. "external": search opens in the Spotify app. */
   readonly searchMode: 'results' | 'external';
+  /** Can this window itself play music (Spotify's Web Playback SDK, the "Play here" option)? */
+  readonly canPlayHere: boolean;
   readonly clock: PlaybackClock;
   subscribe(listener: () => void): () => void;
   getState(): EngineState;
@@ -213,6 +215,17 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   readonly kind = 'web-api';
   readonly isDemo = false;
   readonly searchMode = 'results';
+  readonly canPlayHere: boolean;
+
+  /**
+   * `browserPlayer: false` in the desktop app: Spotify's in-page player needs
+   * copy protection (DRM) that Electron doesn't include, so music plays in a
+   * Spotify app (this computer, phone, speaker) and the window follows it.
+   */
+  constructor({ browserPlayer = true }: { browserPlayer?: boolean } = {}) {
+    super();
+    this.canPlayHere = browserPlayer;
+  }
   private running = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight = false;
@@ -239,7 +252,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
     } catch {
       /* ignore */
     }
-    if (remembered) void this.enableBrowserPlayer().catch(() => {});
+    if (remembered && this.canPlayHere) void this.enableBrowserPlayer().catch(() => {});
   }
 
   stop() {
@@ -377,6 +390,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   private enabling: Promise<void> | null = null;
 
   async enableBrowserPlayer() {
+    if (!this.canPlayHere) throw new Error('Play music in a Spotify app (this computer, your phone or a speaker) and the lyrics follow along.');
     if (this.player) {
       await this.player.activateElement().catch(() => {});
       return;

@@ -9,10 +9,30 @@ import { desktopApi } from './lib/desktopTypes';
 import { SpotifyEngine, type Engine } from './lib/engine';
 
 // "desktop": the desktop app, following the Spotify app on this computer.
-// "spotify": the web version, using the Spotify Web API (needs a developer app).
+// "spotify": signed in to Spotify, using the Spotify Web API (needs a developer
+//            app). The web version always works this way; the desktop app does
+//            when you choose "Sign in with Spotify".
 type Mode = 'loading' | 'setup' | 'spotify' | 'desktop' | 'demo';
 
 const DEMO_KEY = 'ls.demo';
+/** Desktop app: "account" after signing in with Spotify, otherwise follow the Spotify app on this computer. */
+const SOURCE_KEY = 'ls.desktopSource';
+
+function signedInOnDesktop(): boolean {
+  try {
+    return localStorage.getItem(SOURCE_KEY) === 'account' && isLoggedIn();
+  } catch {
+    return false;
+  }
+}
+
+function setDesktopSource(source: 'account' | 'app') {
+  try {
+    localStorage.setItem(SOURCE_KEY, source);
+  } catch {
+    /* ignore */
+  }
+}
 
 function initialMode(): Mode {
   const params = new URLSearchParams(window.location.search);
@@ -23,7 +43,7 @@ function initialMode(): Mode {
     /* ignore */
   }
   if (demo) return 'demo';
-  if (desktopApi()) return 'desktop';
+  if (desktopApi()) return signedInOnDesktop() ? 'spotify' : 'desktop';
   if (window.location.pathname === '/callback') return 'loading';
   if (isLoggedIn()) return 'spotify';
   return 'setup';
@@ -52,7 +72,7 @@ export default function App() {
   }, [mode]);
 
   const engine: Engine | null = useMemo(() => {
-    if (mode === 'spotify') return new SpotifyEngine();
+    if (mode === 'spotify') return new SpotifyEngine({ browserPlayer: !desktopApi() });
     if (mode === 'demo') return new DemoEngine();
     const api = desktopApi();
     if (mode === 'desktop' && api) return new DesktopEngine(api);
@@ -72,23 +92,43 @@ export default function App() {
 
   const signOut = () => {
     setDemoFlag(false);
-    if (mode === 'spotify') logout();
+    if (mode === 'spotify') {
+      logout();
+      if (desktopApi()) setDesktopSource('app');
+    }
     const url = new URL(window.location.href);
     url.searchParams.delete('demo');
     window.history.replaceState({}, '', url);
     setMode(desktopApi() ? 'desktop' : 'setup');
   };
 
+  // Desktop app: "Sign in with Spotify" opens the setup screen; skipping it goes back to the Spotify app on this computer.
+  const desktopSignIn = desktopApi()
+    ? {
+        onSignedIn: () => {
+          setDesktopSource('account');
+          setMode('spotify');
+        },
+        onBack: () => setMode('desktop'),
+      }
+    : undefined;
+
   if (mode === 'loading') return <div className="boot" />;
   if (!engine) {
     return (
       <>
-        <Setup error={error} onDemo={startDemo} />
+        <Setup error={error} onDemo={startDemo} desktop={desktopSignIn} />
         <Toasts />
       </>
     );
   }
   return (
-    <Stage key={mode} engine={engine} onSignOut={signOut} onDemo={mode === 'desktop' ? startDemo : undefined} />
+    <Stage
+      key={mode}
+      engine={engine}
+      onSignOut={signOut}
+      onDemo={mode === 'desktop' ? startDemo : undefined}
+      onSignIn={mode === 'desktop' ? () => setMode('setup') : undefined}
+    />
   );
 }

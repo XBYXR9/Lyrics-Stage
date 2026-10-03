@@ -48,6 +48,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
   readonly kind = 'desktop';
   readonly isDemo = false;
   readonly searchMode = 'external';
+  readonly canPlayHere = false;
   private off: (() => void) | null = null;
   private api: LyricsStageDesktopApi;
   private waitTimer: ReturnType<typeof setTimeout> | undefined;

@@ -57,6 +57,9 @@ jobs:
         env:
           # The builds aren't code-signed (see docs/DESKTOP_APP.md).
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Optional: your Spotify app's Client ID (repository variable SPOTIFY_CLIENT_ID), so "Sign in
+          # with Spotify" works without pasting one. Client IDs aren't secret. Empty = people paste their own.
+          VITE_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
       # Both Windows builds write their update info to latest.yml. The Arm build
       # publishes it as latest-arm64.yml, which is the file the app on Arm reads.
       - name: Name the Windows on Arm update file

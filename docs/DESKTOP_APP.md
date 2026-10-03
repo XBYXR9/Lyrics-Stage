@@ -48,6 +48,41 @@ npm run app:start     # builds and opens the app
    clicked "Don't Allow", go to **System Settings → Privacy & Security → Automation → Lyrics Stage** and turn on
    **Spotify**.
 
+## Sign in with Spotify (optional)
+
+Out of the box, the app follows the Spotify app on the same computer, with no setup. You can instead **sign in with
+your Spotify account**, and the app then uses Spotify's own data (the Spotify Web API), like the web version:
+
+- **Exact timing and covers** straight from Spotify, on every system (no estimated timing on Linux, no missing covers
+  on Windows).
+- **Follows any device**: your phone, a speaker, or the Spotify app on another computer.
+- **Search and play** songs from inside Lyrics Stage (playback control needs Premium).
+
+Music still plays in a Spotify app; the desktop app can't play music itself (Spotify's in-page player needs copy
+protection that the app doesn't include).
+
+**Set it up once:**
+
+1. In the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), click **Create app** (any name).
+2. Add this **Redirect URI**: `http://127.0.0.1:43117/callback`, tick **Web API**, and save.
+3. Under **User Management**, add the email of each Spotify account that will sign in (up to 5; Development mode).
+4. In Lyrics Stage: **Settings → Spotify connection → Sign in with Spotify** (or the button on the start screen). Paste
+   the app's **Client ID** and click **Sign in with Spotify**.
+5. Your browser opens Spotify's login. Allow access; when the page says you're signed in, go back to the app.
+
+The app remembers the login. **Settings → Spotify connection → Sign out** goes back to following the Spotify app on
+this computer.
+
+How it works: Spotify's login opens in your normal browser, and Spotify sends the answer to
+`http://127.0.0.1:43117/callback`. The app listens there only while a login is in progress, and only on your own
+computer (`electron/spotifyLogin.ts`). It uses PKCE, so there's no client secret. If another program uses port 43117,
+the app tells you.
+
+**Building it in (for whoever publishes the app):** set a repository variable named `SPOTIFY_CLIENT_ID` (GitHub →
+Settings → Secrets and variables → Actions → Variables) to your Spotify app's Client ID. Release builds then include it,
+and people only click **Sign in with Spotify**. Client IDs aren't secret. Spotify still only lets the accounts listed
+under User Management sign in, so others can paste their own Client ID via **Use a different Client ID**.
+
 ## Turn on Automix
 
 Automix is a Spotify setting (Premium):
@@ -67,6 +102,7 @@ badge and crossfades the lyrics for exactly as long as the songs overlap.
 | Seek (click the bar or a lyric line) | ✅ | ✅ if Spotify allows it | ✅ |
 | Search | opens in Spotify | opens in Spotify | opens in Spotify |
 | Spotify volume (− / +) | ✅ | ✅ through Windows' Volume Mixer | ⚠️ depends on the Spotify version |
+| Follow your phone or a speaker | with **Sign in with Spotify** | with **Sign in with Spotify** | with **Sign in with Spotify** |
 | Automix / Crossfade blends | ✅ | ✅ | ✅ |
 
 **Windows volume note:** Windows' media controls have no volume, so the volume buttons move Spotify's slider in

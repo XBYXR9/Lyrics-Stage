@@ -22,6 +22,9 @@ export function friendlyError(err: unknown): string {
     if (err.reason === 'NO_ACTIVE_DEVICE' || err.status === 404)
       return 'No active Spotify device. Open Spotify on any device (or press "Play here").';
     if (err.reason === 'VOLUME_CONTROL_DISALLOW') return 'This Spotify device doesn’t let apps change its volume.';
+    // Development-mode Spotify apps only allow the accounts listed under User Management.
+    if (err.status === 403 && /not be registered|not registered/i.test(err.message))
+      return 'This Spotify account isn’t on the Spotify app’s user list yet. Add its email under User Management in the Spotify Developer Dashboard.';
     if (err.reason === 'PREMIUM_REQUIRED' || err.status === 403)
       return 'Spotify only allows controlling playback with a Premium account.';
     if (err.status === 401) return 'Your Spotify login expired. Please connect again.';

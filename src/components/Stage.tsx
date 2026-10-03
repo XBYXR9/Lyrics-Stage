@@ -88,7 +88,18 @@ function useHideControlsInFullscreen(keepVisible: boolean): boolean {
   return fullscreen && idle && !keepVisible;
 }
 
-export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut: () => void; onDemo?: () => void }) {
+export function Stage({
+  engine,
+  onSignOut,
+  onDemo,
+  onSignIn,
+}: {
+  engine: Engine;
+  onSignOut: () => void;
+  onDemo?: () => void;
+  /** Desktop app, while following the Spotify app on this computer: switch to signing in with Spotify. */
+  onSignIn?: () => void;
+}) {
   const state = useEngineState(engine);
   const settings = useSettings();
   const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
@@ -200,6 +211,18 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
     return () => window.removeEventListener('keydown', onKey);
   }, [engine]);
 
+  // The web version leaves the page to log in again; the desktop app logs in through the browser and restarts the connection.
+  const reconnect = async () => {
+    try {
+      const err = await startLogin();
+      if (!desktop) return;
+      if (err) toast(err, 'error');
+      else window.location.reload();
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+
   const playHere = async () => {
     try {
       await engine.enableBrowserPlayer();
@@ -212,7 +235,8 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
   };
 
   const currentStyle = settings.style === 'auto' ? vibe?.autoStyle ?? 'apple' : settings.style;
-  const desktop = engine.kind === 'desktop' ? desktopApi() : null;
+  // The desktop app window (whether it follows the Spotify app here or is signed in to Spotify).
+  const desktop = desktopApi();
   const update = useAppUpdate();
 
   // Desktop app: keep the window above others if the user wants a lyrics "mini player".
@@ -229,7 +253,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
       </div>
     );
   } else if (!track && engine.kind === 'desktop') {
-    content = <DesktopIdle app={state.spotifyApp} onDemo={onDemo} />;
+    content = <DesktopIdle app={state.spotifyApp} onDemo={onDemo} onSignIn={onSignIn} />;
   } else if (!track) {
     content = (
       <div className="msg idle">
@@ -239,7 +263,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
           <button className="btn primary" onClick={() => setPanel('search')}>
             <SearchIcon width={18} height={18} /> Search a song
           </button>
-          {state.browserPlayer.status !== 'ready' && (
+          {engine.canPlayHere && state.browserPlayer.status !== 'ready' && (
             <button className="btn ghost" onClick={playHere}>
               Play in this browser
             </button>
@@ -373,6 +397,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
           engineKind={engine.kind}
           onClose={() => setPanel(null)}
           onSignOut={onSignOut}
+          onSignIn={onSignIn}
         />
       )}
 
@@ -381,7 +406,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
           <div className="setup-card glass small">
             <h2>Spotify login expired</h2>
             <p className="tagline">Connect again to keep the lyrics going.</p>
-            <button className="btn primary wide" onClick={() => void startLogin()}>
+            <button className="btn primary wide" onClick={reconnect}>
               Reconnect Spotify
             </button>
           </div>
@@ -393,7 +418,7 @@ export function Stage({ engine, onSignOut, onDemo }: { engine: Engine; onSignOut
 }
 
 /** What the desktop app shows while nothing is playing in the Spotify app. */
-function DesktopIdle({ app, onDemo }: { app: SpotifyAppStatus | null; onDemo?: () => void }) {
+function DesktopIdle({ app, onDemo, onSignIn }: { app: SpotifyAppStatus | null; onDemo?: () => void; onSignIn?: () => void }) {
   const open = () => void desktopApi()?.openSpotify();
   let title = 'Play something in Spotify';
   let sub = 'Your lyrics show up here as soon as a song starts. Turn on Automix in Spotify (Settings → Playback) and the lyrics blend right along with it.';
@@ -412,6 +437,11 @@ function DesktopIdle({ app, onDemo }: { app: SpotifyAppStatus | null; onDemo?: (
         <button className="btn primary" onClick={open}>
           Open Spotify
         </button>
+        {onSignIn && (
+          <button className="btn ghost" onClick={onSignIn}>
+            Sign in with Spotify
+          </button>
+        )}
         {onDemo && (
           <button className="btn ghost" onClick={onDemo}>
             Try the demo

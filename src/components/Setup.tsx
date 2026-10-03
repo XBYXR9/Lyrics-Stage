@@ -1,12 +1,21 @@
 // First screen: explains how to connect Spotify in a few simple steps, or try the demo.
+// The desktop app shows it too, when you choose "Sign in with Spotify".
 import { useState } from 'react';
 import { getClientId, redirectUri, setClientId, startLogin } from '../lib/auth';
+import { desktopApi } from '../lib/desktopTypes';
 
-export function Setup({ error, onDemo }: { error: string | null; onDemo: () => void }) {
+/** Desktop app: what to do after signing in, or to go back to following the Spotify app on this computer. */
+export interface DesktopSignIn {
+  onSignedIn: () => void;
+  onBack: () => void;
+}
+
+export function Setup({ error, onDemo, desktop }: { error: string | null; onDemo: () => void; desktop?: DesktopSignIn }) {
   const [clientId, setId] = useState(getClientId());
   const [editing, setEditing] = useState(!getClientId());
   const [copied, setCopied] = useState(false);
   const [problem, setProblem] = useState<string | null>(error);
+  const [waiting, setWaiting] = useState(false);
   const uri = redirectUri();
 
   const connect = async () => {
@@ -16,10 +25,18 @@ export function Setup({ error, onDemo }: { error: string | null; onDemo: () => v
       return;
     }
     setClientId(id);
+    setProblem(null);
+    setWaiting(!!desktop);
     try {
-      await startLogin();
+      // The web version leaves the page here; the desktop app waits for the browser.
+      const err = await startLogin();
+      if (!desktop) return;
+      if (err) setProblem(err);
+      else desktop.onSignedIn();
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWaiting(false);
     }
   };
 
@@ -44,9 +61,29 @@ export function Setup({ error, onDemo }: { error: string | null; onDemo: () => v
         <h1>Lyrics Stage</h1>
         <p className="tagline">Apple Music–style lyrics for whatever you play on Spotify — with styles that match each song.</p>
 
+        {desktop && !waiting && (
+          <p className="tagline">
+            Sign in to use Spotify’s own data: exact timing and covers, and lyrics for whatever you play on your phone or
+            speakers too.
+          </p>
+        )}
+
         {problem && <div className="alert">{problem}</div>}
 
-        {editing ? (
+        {waiting ? (
+          <div className="waiting">
+            <p>
+              <b>Finish signing in in your web browser.</b> When it says you’re signed in, come back here.
+            </p>
+            <p className="fine">
+              If Spotify says <b>INVALID_CLIENT: Invalid redirect URI</b>, add <code>{uri}</code> to your Spotify app’s
+              Redirect URIs and try again.
+            </p>
+            <button className="btn ghost wide" onClick={() => void desktopApi()?.cancelSpotifyLogin()}>
+              Cancel
+            </button>
+          </div>
+        ) : editing ? (
           <>
             <ol className="steps">
               <li>
@@ -64,7 +101,15 @@ export function Setup({ error, onDemo }: { error: string | null; onDemo: () => v
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
                 </div>
-                Tick <b>Web API</b> and <b>Web Playback SDK</b>, then save.
+                {desktop ? (
+                  <>
+                    Tick <b>Web API</b>, then save.
+                  </>
+                ) : (
+                  <>
+                    Tick <b>Web API</b> and <b>Web Playback SDK</b>, then save.
+                  </>
+                )}
               </li>
               <li>
                 Open the app’s <b>Settings</b>, copy the <b>Client ID</b> and paste it here:
@@ -83,13 +128,13 @@ export function Setup({ error, onDemo }: { error: string | null; onDemo: () => v
               in the dashboard. Controlling playback needs Spotify Premium.
             </p>
             <button className="btn primary wide" onClick={connect}>
-              Connect Spotify
+              {desktop ? 'Sign in with Spotify' : 'Connect Spotify'}
             </button>
           </>
         ) : (
           <>
             <button className="btn primary wide" onClick={connect}>
-              Connect Spotify
+              {desktop ? 'Sign in with Spotify' : 'Connect Spotify'}
             </button>
             <button className="link" onClick={() => setEditing(true)}>
               Use a different Client ID
@@ -100,9 +145,15 @@ export function Setup({ error, onDemo }: { error: string | null; onDemo: () => v
         <div className="divider">
           <span>or</span>
         </div>
-        <button className="btn ghost wide" onClick={onDemo}>
-          Try the demo — no Spotify needed
-        </button>
+        {desktop ? (
+          <button className="btn ghost wide" onClick={desktop.onBack}>
+            Skip — follow the Spotify app on this computer
+          </button>
+        ) : (
+          <button className="btn ghost wide" onClick={onDemo}>
+            Try the demo — no Spotify needed
+          </button>
+        )}
         <p className="fine center">
           Runs only on your computer. Lyrics from{' '}
           <a href="https://lrclib.net" target="_blank" rel="noreferrer">

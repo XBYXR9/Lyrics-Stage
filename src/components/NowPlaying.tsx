@@ -224,7 +224,7 @@ function DeviceMenu({ engine, state }: { engine: Engine; state: EngineState }) {
               <small>{d.isActive ? 'Playing' : d.type}</small>
             </button>
           ))}
-          {!engine.isDemo && !hasBrowserInList && (
+          {!engine.isDemo && engine.canPlayHere && !hasBrowserInList && (
             <button role="menuitem" className="menu-item" onClick={playHere} disabled={bp.status === 'loading'}>
               <span>Play here (this browser)</span>
               <small>{bp.status === 'error' ? bp.message : bp.status === 'loading' ? 'Starting…' : 'Needs Premium'}</small>

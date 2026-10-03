@@ -36,6 +36,10 @@ Open **http://127.0.0.1:5173** in Chrome, Edge, Firefox or Safari.
 
 You don't need the Client Secret. The site uses Spotify's PKCE login, which works without one.
 
+Using the **desktop app**'s *Sign in with Spotify* instead? Its redirect URI is `http://127.0.0.1:43117/callback`, and
+it only needs **Web API**. You can add both redirect URIs to the same Spotify app. See
+[DESKTOP_APP.md](DESKTOP_APP.md#sign-in-with-spotify-optional).
+
 ## 3. Add yourself as a user
 
 New Spotify apps start in **Development mode**. Only accounts you list can use the app:

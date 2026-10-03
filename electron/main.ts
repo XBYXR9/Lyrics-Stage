@@ -7,6 +7,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { validateCommand, type DesktopSnapshot } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
+import { cancelSpotifyLogin, signInWithSpotify } from './spotifyLogin';
 import { startUpdates } from './updater';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -74,6 +75,18 @@ ipcMain.handle('ls:open-spotify', async (_event, query: unknown) => {
     await shell.openExternal(q ? `https://open.spotify.com/search/${encodeURIComponent(q)}` : 'https://open.spotify.com/');
   }
 });
+
+ipcMain.handle('ls:spotify-login', async (_event, authUrl: unknown) => {
+  const result = await signInWithSpotify(authUrl, (url) => shell.openExternal(url));
+  // Bring the app back to the front once the browser is done.
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+  return result;
+});
+
+ipcMain.handle('ls:spotify-login-cancel', () => cancelSpotifyLogin());
 
 ipcMain.handle('ls:always-on-top', (_event, on: unknown) => {
   win?.setAlwaysOnTop(on === true, 'floating');

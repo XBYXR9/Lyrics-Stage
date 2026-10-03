@@ -39,6 +39,10 @@ launch needs an extra click (right-click → Open on macOS; "More info → Run a
 From version 0.2.0 on, the app updates itself on Windows and Linux (AppImage): new versions download in the background
 and install when you restart it. On macOS it tells you when a new version is out.
 
+Prefer Spotify's own data? **Settings → Spotify connection → Sign in with Spotify** uses the Spotify Web API instead:
+exact timing and covers, and it follows your phone or speakers too. It needs a free Spotify developer app (one-time
+setup, see [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md#sign-in-with-spotify-optional)).
+
 Run it from the source code:
 
 ```bash
