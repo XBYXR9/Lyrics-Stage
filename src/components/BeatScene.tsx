@@ -9,7 +9,7 @@ import { readAudioLevels } from '../lib/audioLevels';
 import { onBeat } from '../lib/beat';
 import type { Clock } from '../lib/clock';
 import { BAR_COUNT, estimatedBars } from '../lib/pulse';
-import { isBigBeat, mean, punchShape, resampleLevels, rippleShape, RIPPLE_MS, withAlpha } from '../lib/scene';
+import { isBigBeat, mean, mixHsl, punchShape, resampleLevels, rippleShape, RIPPLE_MS, withAlpha } from '../lib/scene';
 import type { NoLyricsVisual } from '../lib/settings';
 import type { Palette } from '../lib/types';
 
@@ -152,7 +152,8 @@ function drawOrb(
     const angle = Math.PI / 2 + (k / SPOKES) * Math.PI * 2;
     const from = r * 1.1;
     const to = from + base * (0.1 + level * 0.62) * (1 + punch * 1.6);
-    ctx.strokeStyle = withAlpha(k < SPOKES / 2 ? p.accent : p.accent2, 0.5 + level * 0.5);
+    // The two album colors blend smoothly all the way round: the first on the left, the second on the right, no seam.
+    ctx.strokeStyle = mixHsl(p.accent, p.accent2, (1 + Math.cos(angle)) / 2, 0.5 + level * 0.5);
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(angle) * from, cy + Math.sin(angle) * from);
     ctx.lineTo(cx + Math.cos(angle) * to, cy + Math.sin(angle) * to);

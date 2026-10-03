@@ -3,6 +3,7 @@ import {
   BIG_BEAT,
   isBigBeat,
   mean,
+  mixHsl,
   punchShape,
   resampleLevels,
   RIPPLE_MS,
@@ -72,5 +73,34 @@ describe('scene helpers', () => {
   it('averages part of a list', () => {
     expect(mean([1, 2, 3, 4], 0, 2)).toBe(1.5);
     expect(mean([1, 2, 3, 4], 2, 2)).toBe(0);
+  });
+
+  it('blends two album colors smoothly, the hue taking the short way round', () => {
+    const a = 'hsl(50 60% 60%)';
+    const b = 'hsl(110 40% 50%)';
+    expect(mixHsl(a, b, 0)).toBe('hsl(50 60% 60%)');
+    expect(mixHsl(a, b, 1)).toBe('hsl(110 40% 50%)');
+    expect(mixHsl(a, b, 0.5)).toBe('hsl(80 50% 55%)');
+    expect(mixHsl(a, b, 0.5, 0.4)).toBe('hsl(80 50% 55% / 0.400)');
+    // 350 to 10 goes through 0, not back through 180
+    expect(mixHsl('hsl(350 50% 50%)', 'hsl(10 50% 50%)', 0.5)).toBe('hsl(0 50% 50%)');
+    // t is kept within 0..1
+    expect(mixHsl(a, b, 3)).toBe('hsl(110 40% 50%)');
+  });
+
+  it('has no hard seam: nearby spokes get nearly the same color all the way round', () => {
+    const a = 'hsl(50 60% 60%)';
+    const b = 'hsl(110 40% 50%)';
+    const hue = (angle: number) => Number(/hsl\(([\d.]+)/.exec(mixHsl(a, b, (1 + Math.cos(angle)) / 2))![1]);
+    for (let k = 0; k < 48; k++) {
+      const one = hue((k / 48) * Math.PI * 2);
+      const next = hue(((k + 1) / 48) * Math.PI * 2);
+      expect(Math.abs(one - next)).toBeLessThan(4); // the whole 60° range is spread over many steps
+    }
+  });
+
+  it('uses the nearer color as it is when a color cannot be blended', () => {
+    expect(mixHsl('#ff0000', 'hsl(110 40% 50%)', 0.2)).toBe('#ff0000');
+    expect(mixHsl('#ff0000', '#00ff00', 0.8)).toBe('#00ff00');
   });
 });
