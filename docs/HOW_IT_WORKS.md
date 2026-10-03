@@ -210,11 +210,16 @@ Strong beats are found in one place, `useBeatFlash` (`src/hooks/beatHooks.ts`), 
 rules are in `src/lib/beat.ts` (`beatPlan`): with synced lyrics a flash may only happen in a *short pause* (after one
 sung line, before the next, a gap of at least 250 ms and under the 4.5 s that makes an interlude); with the no-lyrics
 scene on screen it happens on every strong beat. *Every bass beat* heard in the real sound may also flash anywhere in the song (`anywhere`; Settings → Bass beats glow
-even while singing), since the estimated rhythm isn't the real beat and stays in the pauses. `detectBeat` finds a bass
-beat (a kick, a bass note, an 808) as a jump above the bass's recent average: 40% above it, but never more than +0.2,
-so beats on top of heavy, steady bass are still caught. A beat's strength is how hard it hits compared with the
+even while singing), since the estimated rhythm isn't the real beat and stays in the pauses. `detectBeat` (`src/lib/audioLevels.ts`) finds a bass
+beat (a kick, a bass note, an 808) as a sharp rise in the low bins of the spectrum (30 to 130 Hz). Each bin is
+watched on its own against the lowest it has been lately, so a loud steady bass note in one bin doesn't hide a kick
+rising in the bins around it, and the rises are added up (deep bins count most). Steady loud bass, a slow swell and
+the tail of the last beat don't count; beats are at least 250 ms apart. The analyser's decibel scale is widened
+(`configureAnalyser`: -90 to -5 dB instead of the default -100 to -30), because in loud music the bass sits above -30 dB
+all the time, which made it read "full" and hid every kick. A beat's strength is how hard it hit compared with the
 hardest recent beat, so harder beats flash brighter, and beats of 0.7 and up are "big" (the no-lyrics scene gives
-those a harder punch and a shockwave). The look is picked in Settings (`BeatStyle`): the hook writes `--bf`,
+those a harder punch and a shockwave). Limits: low voices and instruments near 130 Hz can occasionally set it off,
+and flashes are still capped at three a second, so very fast bass patterns are thinned out. The look is picked in Settings (`BeatStyle`): the hook writes `--bf`,
 `--bf-ring` and `--bf-rs` on the `.beat-fx` layer and CSS (`src/styles/lyrics.css`) shows the glow and ring, a
 full-screen wash or lit edges; "kick" scales the lyrics area instead. Flashes are at least 340 ms apart (never more
 than three a second, the accessibility limit for flashing content), the glow never goes above 40% opacity, the wash

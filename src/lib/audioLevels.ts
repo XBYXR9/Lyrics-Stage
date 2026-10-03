@@ -14,7 +14,6 @@
 // rhythm in pulse.ts.
 import { desktopApi } from './desktopTypes';
 import { BAR_COUNT } from './pulse';
-import { mean } from './scene';
 
 const LOW_HZ = 45;
 const HIGH_HZ = 12000;
@@ -69,40 +68,103 @@ export function barsFromSpectrum(
   return !silent;
 }
 
+/**
+ * Sets up the analyser the way the effects need. The default decibel scale tops
+ * out at -30 dB, and in loud music the bass sits above that all the time, so the
+ * bass would read "full" constantly and a kick could never stand out. This scale
+ * leaves room above the bass.
+ */
+export function configureAnalyser(node: AnalyserNode) {
+  node.fftSize = 2048; // fine enough that each low bar hears its own slice of the bass
+  node.smoothingTimeConstant = 0.55;
+  node.minDecibels = -90;
+  node.maxDecibels = -5;
+}
+
+/** The bass range that beats are listened for: low enough to leave voices and most instruments out. */
+const BASS_LOW_HZ = 30;
+const BASS_HIGH_HZ = 130;
+
+/**
+ * The level (0..1) of each bin in the bass range, straight from an analyser
+ * spectrum (0..255 per bin, on a decibel scale). Kept per bin, so a steady bass
+ * note in one bin doesn't hide a kick drum rising in the bins next to it.
+ */
+export function bassBins(spectrum: ArrayLike<number>, sampleRate: number): Float32Array {
+  const binHz = sampleRate / 2 / spectrum.length;
+  const from = Math.max(1, Math.floor(BASS_LOW_HZ / binHz));
+  const to = Math.min(spectrum.length - 1, Math.max(from, Math.floor(BASS_HIGH_HZ / binHz)));
+  const out = new Float32Array(to - from + 1);
+  for (let i = from; i <= to; i++) out[i - from] = spectrum[i] / 255;
+  return out;
+}
+
 /** Remembers what the bass has been doing, to tell a hit from steady loudness. */
 export interface BeatState {
-  /** Slowly-moving average of the bass level. */
-  avg: number;
+  /** For each bass bin, the lowest it has been lately; it creeps up slowly, so steady bass stops counting as "above" it. */
+  floors: Float32Array | null;
+  /** The last ~100 ms of bass levels, to see how fast each bin is rising. */
+  recent: { at: number; levels: Float32Array }[];
+  lastNow: number;
   lastAt: number;
-  /** How hard the hardest recent beat hit (its bass level when detected), fading slowly: a beat is rated against it. */
+  /** How hard the hardest recent beat hit, fading slowly: a beat is rated against it. */
   peak: number;
 }
 
-/** The average is learned from the first sample, so music that is already loud doesn't start with false beats. */
-export const newBeatState = (): BeatState => ({ avg: -1, lastAt: -Infinity, peak: 0 });
+export const newBeatState = (): BeatState => ({ floors: null, recent: [], lastNow: -1, lastAt: -Infinity, peak: 0 });
+
+/** How much a floor may creep up per second. */
+const FLOOR_CREEP_PER_S = 0.15;
+/** A bin counts as "hit" when it rose at least this far above its floor (about 4 dB)... */
+const MIN_RISE = 0.05;
+/** ...and by at least this much within the last ~100 ms (a sharp attack, not a slow swell). */
+const MIN_ATTACK = 0.04;
+/** A beat needs this much rising bass added up over all the bins (a kick rises in several bins, a pure bass note in one or two). */
+const MIN_HIT = 0.3;
+const RECENT_MS = 100;
+const MIN_BEAT_GAP_MS = 250;
 
 /**
- * Is this a strong beat? `bass` is the current level of the low bars (0..1).
- * A beat is a clear jump above the bass's recent average (a kick drum, a bass
- * note, an 808), at least 250 ms after the last one, so steady loud bass isn't
- * a beat.
- * Returns its strength (0..1), or 0. The strength says how hard it hits
- * compared with the loudest recent kicks: the hardest ones are 1, so "big
- * beats" (0.7 and up) are the kicks that stand out in this song.
+ * How much a bin's rise counts, by its place in the bass range (0 = lowest, 1 =
+ * highest): full for the deep bass where kicks and bass notes live, less near the
+ * top, where low voices and other instruments leak in.
  */
-export function detectBeat(bass: number, state: BeatState, nowMs: number): number {
-  if (state.avg < 0) state.avg = bass;
-  state.peak *= 0.998;
-  // A jump of 40% over the average, but never more than +0.2: with heavy, steady bass the average sits near the top, and
-  // 40% above it could never be reached, so the beats on top of it would be missed.
-  const threshold = Math.max(0.2, Math.min(state.avg * 1.4, state.avg + 0.2));
-  const hit = bass > threshold && nowMs - state.lastAt > 250;
-  state.avg = state.avg * 0.96 + bass * 0.04;
-  if (!hit) return 0;
+const binWeight = (place: number) => (place <= 0.4 ? 1 : 1 - ((place - 0.4) / 0.6) * 0.6);
+
+/**
+ * Is this a beat? `levels` are the current bass levels (0..1), one per bin (see
+ * bassBins). A beat is a sharp rise in the bass, clearly above where it has
+ * been lately: a kick drum, a bass note, an 808. Steady loud bass isn't a beat,
+ * and neither is a slow swell or the tail of the last beat, however loud the
+ * rest of the music is. Beats are at least 250 ms apart. Returns its strength
+ * (0..1), or 0: how hard it hit compared with the hardest recent beat, so the
+ * hardest are 1.
+ */
+export function detectBeat(levels: ArrayLike<number>, state: BeatState, nowMs: number): number {
+  const n = levels.length;
+  const dt = state.lastNow < 0 ? 0 : Math.max(0, (nowMs - state.lastNow) / 1000);
+  state.lastNow = nowMs;
+  if (!state.floors || state.floors.length !== n) state.floors = Float32Array.from(levels);
+  const floors = state.floors;
+  state.peak *= Math.pow(0.89, dt);
+
+  while (state.recent.length && nowMs - state.recent[0].at > RECENT_MS) state.recent.shift();
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    floors[i] = Math.min(levels[i], floors[i] + FLOOR_CREEP_PER_S * dt);
+    let before = levels[i];
+    for (const r of state.recent) before = Math.min(before, r.levels[i]);
+    const rise = levels[i] - floors[i];
+    const attack = levels[i] - before;
+    if (rise >= MIN_RISE && attack >= MIN_ATTACK) total += binWeight(n > 1 ? i / (n - 1) : 0) * Math.min(rise, attack);
+  }
+  state.recent.push({ at: nowMs, levels: Float32Array.from(levels) });
+
+  if (total < MIN_HIT || nowMs - state.lastAt <= MIN_BEAT_GAP_MS) return 0;
   state.lastAt = nowMs;
-  state.peak = Math.max(state.peak, bass);
-  const span = Math.max(0.05, state.peak - threshold);
-  return Math.min(1, Math.max(0.35, 0.35 + (0.65 * (bass - threshold)) / span));
+  state.peak = Math.max(state.peak, total);
+  const span = Math.max(0.1, state.peak - MIN_HIT);
+  return Math.min(1, Math.max(0.35, 0.35 + (0.65 * (total - MIN_HIT)) / span));
 }
 
 /**
@@ -222,12 +284,13 @@ export class LevelReader {
       this.lastReadAt = now;
       this.fill(this.spectrum);
       const loud = barsFromSpectrum(this.spectrum, this.sampleRate, this.bars, this.state);
+      if (loud) this.lastSoundAt = now;
+      // Silence between beats is data too (the bass falls to nothing), so it is always fed in.
+      const bass = bassBins(this.spectrum, this.sampleRate);
       let beat = 0;
-      if (loud) {
-        this.lastSoundAt = now;
-        if (this.warm > 0) this.warm--;
-        else beat = detectBeat(mean(this.bars, 0, 6), this.beatState, now);
-      }
+      if (this.warm > 0) {
+        if (loud) this.warm--;
+      } else beat = detectBeat(bass, this.beatState, now);
       this.heard = now - this.lastSoundAt < SILENCE_MS;
       if (this.delayMs > 0) this.line.push(now, this.bars, beat);
       else {
@@ -359,8 +422,7 @@ export function startAudioLevels(): Promise<boolean> {
       const ctx = new AudioContext();
       void ctx.resume().catch(() => {});
       const node = ctx.createAnalyser();
-      node.fftSize = 2048; // fine enough that each low bar hears its own slice of the bass
-      node.smoothingTimeConstant = 0.55;
+      configureAnalyser(node);
       ctx.createMediaStreamSource(media).connect(node); // not connected to the speakers: no echo
       stream = media;
       context = ctx;
