@@ -40,7 +40,9 @@ songs together, the lyrics blend too.
   TikTok) and the lyrics fill a full-screen **9:16** frame in the middle of the screen, with every button hidden and
   the cover and song name at the top. Record the screen with OBS or any screen recorder and crop to the frame (its
   size shows for a few seconds). On the Android app it fills the phone's screen and hides the status bar. All the
-  styles and beat effects work in it.
+  styles and beat effects work in it, and everything stays out of the way of TikTok's own buttons (top bar, caption
+  and the buttons on the right). **Record without the song's sound** and add the song in TikTok with *Add sound*: a
+  video with the song's audio inside the file is flagged as copyrighted and muted.
 - **Works with right-to-left lyrics** such as Arabic and Hebrew.
 - **A demo mode** to try every style without Spotify.
 

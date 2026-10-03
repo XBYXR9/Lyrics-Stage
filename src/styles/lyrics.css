@@ -732,29 +732,30 @@
    Recording view (9:16): sizes follow the frame instead of the screen.
    --rec-w and --rec-h are the frame's size in pixels (set by the main screen).
    ===================================================================== */
+/* The sides and the top and bottom are already kept clear by the padding of .stage-main. */
 .stage.rec .am-lines {
   max-width: none;
   margin: 0;
-  padding: 0 calc(var(--rec-w) * 0.07) calc(var(--rec-h) * 0.5);
+  padding: 0 0 calc(var(--rec-h) * 0.4);
 }
 .stage.rec .am-line {
-  font-size: calc(var(--rec-w) * 0.075 * var(--font-scale, 1));
+  font-size: calc(var(--rec-w) * 0.07 * var(--font-scale, 1));
 }
 .stage.rec .ko-line,
 .stage.rec .ne-line {
-  font-size: calc(var(--rec-w) * 0.075 * var(--font-scale, 1));
+  font-size: calc(var(--rec-w) * 0.07 * var(--font-scale, 1));
 }
 .stage.rec .sp-line {
-  font-size: calc(var(--rec-w) * 0.088 * var(--font-scale, 1));
+  font-size: calc(var(--rec-w) * 0.082 * var(--font-scale, 1));
 }
 .stage.rec .kn-line {
-  font-size: calc(var(--rec-w) * 0.1 * var(--font-scale, 1));
+  font-size: calc(var(--rec-w) * 0.092 * var(--font-scale, 1));
 }
 .stage.rec .plain {
-  padding: calc(var(--rec-h) * 0.04) calc(var(--rec-w) * 0.07) calc(var(--rec-h) * 0.2);
+  padding: calc(var(--rec-h) * 0.02) 0 calc(var(--rec-h) * 0.12);
 }
 .stage.rec .plain-line {
-  font-size: calc(var(--rec-w) * 0.052 * var(--font-scale, 1));
+  font-size: calc(var(--rec-w) * 0.05 * var(--font-scale, 1));
 }
 .stage.rec .dots.is-bars {
   --bar-w: calc(var(--rec-w) * 0.014);

@@ -1558,7 +1558,10 @@ kbd {
 
 /* ---------- Recording view (TikTok): a 9:16 frame, nothing else ---------- */
 /* --rec-w and --rec-h are the frame's size in pixels (set by the main screen); the lyric sizes
-   for the frame are at the end of lyrics.css. */
+   for the frame are at the end of lyrics.css.
+   TikTok draws its own buttons over the video, so nothing important goes there: the top 14% (the
+   LIVE / Following / For You bar), the bottom 22% (the caption, the sound name and the menu) and
+   the sides 12% (the like / comment / share buttons are on the right). */
 .stage.rec {
   background: #000;
 }
@@ -1572,8 +1575,8 @@ kbd {
 .stage.rec .stage-main {
   display: grid;
   grid-template-columns: 1fr;
-  /* leaves room for the song name above, and for TikTok's own caption and buttons below */
-  padding: calc(var(--rec-h) * 0.15) 0 calc(var(--rec-h) * 0.17);
+  /* the lyrics stay inside TikTok's safe area, below the song name */
+  padding: calc(var(--rec-h) * 0.23) calc(var(--rec-w) * 0.12) calc(var(--rec-h) * 0.22);
 }
 .stage.rec .toasts {
   display: none;
@@ -1581,9 +1584,9 @@ kbd {
 .rec-hud {
   position: absolute;
   z-index: 6;
-  top: calc(var(--rec-h) * 0.07);
-  left: calc(var(--rec-w) * 0.07);
-  right: calc(var(--rec-w) * 0.07);
+  top: calc(var(--rec-h) * 0.15);
+  left: calc(var(--rec-w) * 0.12);
+  right: calc(var(--rec-w) * 0.12);
   display: flex;
   align-items: center;
   gap: calc(var(--rec-w) * 0.03);
@@ -1591,9 +1594,9 @@ kbd {
 }
 .rec-cover {
   flex: none;
-  width: calc(var(--rec-w) * 0.12);
-  height: calc(var(--rec-w) * 0.12);
-  border-radius: calc(var(--rec-w) * 0.016);
+  width: calc(var(--rec-w) * 0.1);
+  height: calc(var(--rec-w) * 0.1);
+  border-radius: calc(var(--rec-w) * 0.014);
   object-fit: cover;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
@@ -1607,13 +1610,13 @@ kbd {
   white-space: nowrap;
 }
 .rec-title {
-  font-size: calc(var(--rec-w) * 0.038);
+  font-size: calc(var(--rec-w) * 0.036);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 .rec-artist {
   margin-top: 0.15em;
-  font-size: calc(var(--rec-w) * 0.03);
+  font-size: calc(var(--rec-w) * 0.029);
   color: rgba(255, 255, 255, 0.7);
 }
 /* Outside the frame on a wide screen (on a phone they sit on top of it for a moment). */

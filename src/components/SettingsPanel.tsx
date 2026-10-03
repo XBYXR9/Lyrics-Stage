@@ -197,7 +197,13 @@ export function SettingsPanel({
               {native
                 ? 'The lyrics fill a 9:16 frame on the full screen, with the status bar and every button hidden. Start your phone’s screen recorder, then open this. The Back button leaves it.'
                 : 'The lyrics fill a 9:16 frame in the middle of a full screen, with every button hidden. Record the screen with OBS or any screen recorder, then crop to the frame (its size shows for a few seconds). Press R, Esc or the ✕ to leave.'}{' '}
-              It keeps the screen awake, and the beat effects and lyric styles all work as usual.
+              Everything stays inside TikTok’s safe area, away from its own buttons and caption. It keeps the screen awake, and
+              the beat effects and lyric styles all work as usual.
+            </p>
+            <p className="hint">
+              <b>Record without the song’s sound</b> (turn off the computer or phone audio in your recorder), then add the
+              song inside TikTok with <b>Add sound</b>. A video that has the song’s audio inside the file gets flagged as
+              copyrighted and muted.
             </p>
           </Section>
         )}
