@@ -87,6 +87,37 @@ describe('strong beats', () => {
     expect(detectBeat(0.92, state, 3000)).toBeGreaterThanOrEqual(0.7); // back to a hard kick
   });
 
+  it('hears every kind of bass beat, soft or hard, not only the big ones', () => {
+    /** Bass level per frame for `secs` seconds: a base level with a kick of this height every `period` seconds. */
+    const hitsFor = (base: number, kick: number, period: number, tau = 0.08, secs = 12) => {
+      const state = newBeatState();
+      let hits = 0;
+      for (let f = 0; f < secs * 60; f++) {
+        const t = f / 60;
+        const bass = Math.min(1, base + kick * Math.exp(-(t % period) / tau));
+        if (detectBeat(bass, state, t * 1000) > 0) hits++;
+      }
+      return hits;
+    };
+    const kicks = (period: number, secs = 12) => Math.floor(secs / period);
+    expect(hitsFor(0.1, 0.85, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 2); // hard kicks
+    expect(hitsFor(0.08, 0.3, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 2); // soft kicks
+    expect(hitsFor(0.05, 0.9, 1, 0.4)).toBeGreaterThanOrEqual(kicks(1) - 2); // 808s with a long tail
+    expect(hitsFor(0.1, 0.8, 0.29, 0.06)).toBeGreaterThanOrEqual(30); // fast kicks, 3 to 4 a second
+    expect(hitsFor(0.55, 0.4, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 3); // kicks on top of a bass line
+    expect(hitsFor(0.7, 0.28, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 4); // kicks on top of very heavy bass
+  });
+
+  it('does not take steady or slowly swelling bass for beats', () => {
+    const state = newBeatState();
+    let hits = 0;
+    for (let f = 0; f < 720; f++) {
+      const t = f / 60;
+      if (detectBeat(0.5 + 0.2 * Math.sin(t * 8), state, t * 1000) > 0) hits++;
+    }
+    expect(hits).toBe(0);
+  });
+
   it('rates kicks against the loudest recent ones, so a steady groove still has big beats', () => {
     const state = newBeatState();
     const strengths: number[] = [];
@@ -141,30 +172,30 @@ describe('the song window', () => {
 });
 
 describe('what the beat code does', () => {
-  const base = { style: 'glow', reduceMotion: false, lyricsKind: 'synced', sceneShown: false, bigBeats: true } as const;
+  const base = { style: 'glow', reduceMotion: false, lyricsKind: 'synced', sceneShown: false, whileSinging: true } as const;
 
-  it('flashes in the short pauses of a song with synced lyrics, and lets big beats glow anywhere', () => {
-    expect(beatPlan(base)).toEqual({ detect: true, flashIn: 'pauses', bigAnywhere: true });
-    expect(beatPlan({ ...base, bigBeats: false })).toEqual({ detect: true, flashIn: 'pauses', bigAnywhere: false });
+  it('flashes in the short pauses of a song with synced lyrics, and lets every bass beat glow anywhere', () => {
+    expect(beatPlan(base)).toEqual({ detect: true, flashIn: 'pauses', anywhere: true });
+    expect(beatPlan({ ...base, whileSinging: false })).toEqual({ detect: true, flashIn: 'pauses', anywhere: false });
   });
 
-  it('lets big beats glow even without synced lyrics (plain text, or still loading)', () => {
-    expect(beatPlan({ ...base, lyricsKind: 'plain' })).toEqual({ detect: true, flashIn: 'never', bigAnywhere: true });
-    expect(beatPlan({ ...base, lyricsKind: null })).toEqual({ detect: true, flashIn: 'never', bigAnywhere: true });
-    expect(beatPlan({ ...base, lyricsKind: 'plain', bigBeats: false })).toEqual({ detect: false, flashIn: 'never', bigAnywhere: false });
+  it('lets bass beats glow even without synced lyrics (plain text, or still loading)', () => {
+    expect(beatPlan({ ...base, lyricsKind: 'plain' })).toEqual({ detect: true, flashIn: 'never', anywhere: true });
+    expect(beatPlan({ ...base, lyricsKind: null })).toEqual({ detect: true, flashIn: 'never', anywhere: true });
+    expect(beatPlan({ ...base, lyricsKind: 'plain', whileSinging: false })).toEqual({ detect: false, flashIn: 'never', anywhere: false });
   });
 
   it('flashes on every strong beat when the no-lyrics scene is showing, and still feeds the scene when the flash is off', () => {
-    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true })).toEqual({ detect: true, flashIn: 'always', bigAnywhere: false });
+    expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true })).toEqual({ detect: true, flashIn: 'always', anywhere: false });
     expect(beatPlan({ ...base, style: 'off', lyricsKind: 'instrumental', sceneShown: true })).toEqual({
       detect: true,
       flashIn: 'never',
-      bigAnywhere: false,
+      anywhere: false,
     });
   });
 
   it('does nothing with the flash off or with Reduce motion', () => {
-    const none = { detect: false, flashIn: 'never', bigAnywhere: false };
+    const none = { detect: false, flashIn: 'never', anywhere: false };
     expect(beatPlan({ ...base, style: 'off' })).toEqual(none);
     expect(beatPlan({ ...base, reduceMotion: true })).toEqual(none);
     expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true, reduceMotion: true })).toEqual(none);

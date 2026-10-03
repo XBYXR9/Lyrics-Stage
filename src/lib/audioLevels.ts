@@ -83,8 +83,9 @@ export const newBeatState = (): BeatState => ({ avg: -1, lastAt: -Infinity, peak
 
 /**
  * Is this a strong beat? `bass` is the current level of the low bars (0..1).
- * A beat is a clear jump above the bass's recent average, at least 250 ms
- * after the last one, so steady loud bass isn't a beat, a kick drum is.
+ * A beat is a clear jump above the bass's recent average (a kick drum, a bass
+ * note, an 808), at least 250 ms after the last one, so steady loud bass isn't
+ * a beat.
  * Returns its strength (0..1), or 0. The strength says how hard it hits
  * compared with the loudest recent kicks: the hardest ones are 1, so "big
  * beats" (0.7 and up) are the kicks that stand out in this song.
@@ -92,7 +93,9 @@ export const newBeatState = (): BeatState => ({ avg: -1, lastAt: -Infinity, peak
 export function detectBeat(bass: number, state: BeatState, nowMs: number): number {
   if (state.avg < 0) state.avg = bass;
   state.peak *= 0.998;
-  const threshold = Math.max(0.2, state.avg * 1.4);
+  // A jump of 40% over the average, but never more than +0.2: with heavy, steady bass the average sits near the top, and
+  // 40% above it could never be reached, so the beats on top of it would be missed.
+  const threshold = Math.max(0.2, Math.min(state.avg * 1.4, state.avg + 0.2));
   const hit = bass > threshold && nowMs - state.lastAt > 250;
   state.avg = state.avg * 0.96 + bass * 0.04;
   if (!hit) return 0;

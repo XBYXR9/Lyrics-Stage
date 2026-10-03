@@ -128,8 +128,8 @@ a beat, but it isn't locked to the real one.
 album's colors flash in the style you pick in Settings → **Beat flash**: **Glow** (a soft glow and ring behind the
 lyrics), **Full screen** (a soft color wash), **Edges** (the screen's edges light up), **Kick** (the lyrics bump a
 little, no light at all) or **Off**. Never more than three a second, tinted and soft (never white). Off with **Reduce
-motion**. With **Follow your PC's sound** (below), *big beats* (the hardest kicks of the song) also glow while
-someone is singing, not only in the pauses (Settings → Beat flash → *Big beats glow even while singing*). Without the real sound it flashes on the first and third beat of each bar of the estimated rhythm, so it can
+motion**. With **Follow your PC's sound** (below), *every bass beat* (a kick, a bass note, an 808; the harder, the brighter)
+also glows while someone is singing, not only in the pauses (Settings → Beat flash → *Bass beats glow even while singing*). Without the real sound it flashes on the first and third beat of each bar of the estimated rhythm, so it can
 be a little off the real beat.
 
 **Songs without lyrics:** when a song has no lyrics, or is an instrumental, the lyrics area shows a scene instead of a

@@ -35,8 +35,8 @@ export interface Settings {
   soundDelayMs: number;
   /** How strong beats show in the short pauses between lines, and in a song without lyrics. */
   beatStyle: BeatStyle;
-  /** Big beats in the real sound (Windows) also glow while someone is singing, not only in the pauses between lines. */
-  flashOnBigBeats: boolean;
+  /** Bass beats in the real sound (Windows) also glow while someone is singing, not only in the pauses between lines. */
+  flashWhileSinging: boolean;
   /** What to show while a song has no lyrics (or is instrumental). */
   noLyricsVisual: NoLyricsVisual;
   /** Tone down movement and blur. */
@@ -64,7 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   soundSync: 'ask',
   soundDelayMs: 0,
   beatStyle: 'glow',
-  flashOnBigBeats: true,
+  flashWhileSinging: true,
   noLyricsVisual: 'orb',
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,
@@ -81,8 +81,11 @@ export function migrateSettings(stored: Record<string, unknown>): Record<string,
   const next = { ...stored };
   if (next.beatFlash === false && next.beatStyle === undefined) next.beatStyle = 'off';
   if (next.reactToSound === true && next.soundSync === undefined) next.soundSync = 'on';
+  // 0.5.2 only flashed *big* beats while singing; every bass beat does now, under a new name.
+  if (next.flashOnBigBeats !== undefined && next.flashWhileSinging === undefined) next.flashWhileSinging = next.flashOnBigBeats;
   delete next.beatFlash;
   delete next.reactToSound;
+  delete next.flashOnBigBeats;
   return next;
 }
 

@@ -142,7 +142,7 @@ export function Stage({
       reduceMotion: settings.reduceMotion,
       lyrics,
       sceneShown,
-      bigBeats: settings.flashOnBigBeats,
+      whileSinging: settings.flashWhileSinging,
       song,
       offsetMs: settings.offsetMs,
       energy: vibe?.energy ?? 0.5,
