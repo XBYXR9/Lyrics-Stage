@@ -128,6 +128,11 @@ export function initialEngineState(): EngineState {
 /** Keeps a volume within 0–100. */
 export const clampVolume = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
 
+/** How long after a song change a report of the song just left can still be a stale one (blends last up to 12 s). */
+const STALE_REPORT_WINDOW_MS = 14_000;
+/** A report of the song just left counts as stale if it is within this of where that song would be by now. */
+const STALE_REPORT_TOLERANCE_MS = 4000;
+
 /**
  * A change in the reported position (beyond normal playing) bigger than this means Spotify refreshed its state:
  * a good part of the blend length, but never less than a normal bit of network jitter.
@@ -168,6 +173,11 @@ export abstract class BaseEngine {
    */
   private positionBiasMs = 0;
   private fixBlendTiming = true;
+  /**
+   * The song we just left and where it was, so a stale report of it, which Spotify can send between reports of the
+   * new song while it mixes, isn't taken for a change back to it.
+   */
+  private lastLeft: { key: string; name: string; pos: number; at: number; durationMs: number } | null = null;
   /** The last position Spotify reported, to notice when it corrects itself. */
   private lastReport: { pos: number; at: number; playing: boolean } | null = null;
 
@@ -191,6 +201,17 @@ export abstract class BaseEngine {
     const prev = this.state.track;
     const last = this.lastReport;
     const clockBefore = this.clock.now(measuredAt);
+
+    // Around a hand-over, Spotify can answer with the song we just left for a moment, between answers about the new one.
+    // That is not a change back: taking it for one would flip the lyrics, the clock and the animations back and forth.
+    const left = this.lastLeft;
+    if (prev && left && prev.key !== track.key && track.key === left.key && reported && measuredAt - left.at < STALE_REPORT_WINDOW_MS) {
+      const expected = left.pos + (measuredAt - left.at);
+      if (Math.abs(reportedMs - expected) < STALE_REPORT_TOLERANCE_MS || reportedMs >= left.durationMs - 1500) {
+        logTiming(`ignored a stale report of "${left.name}" (reported ${sec(reportedMs)}, it would be at ${sec(expected)} by now)`);
+        return;
+      }
+    }
     if (!prev || prev.key !== track.key) {
       const transition: TransitionInfo = prev
         ? classifyTransition({
@@ -201,6 +222,7 @@ export abstract class BaseEngine {
             wasPlaying: this.clock.playing,
           })
         : { kind: 'initial', overlapMs: 0, startOffsetMs: reportedMs };
+      this.lastLeft = prev ? { key: prev.key, name: prev.name, pos: this.clock.raw(measuredAt), at: measuredAt, durationMs: prev.durationMs } : null;
       this.positionBiasMs = reported && this.fixBlendTiming && transition.kind === 'blend' ? transition.overlapMs : 0;
       const positionMs = Math.max(0, reportedMs - this.positionBiasMs);
       logTiming(

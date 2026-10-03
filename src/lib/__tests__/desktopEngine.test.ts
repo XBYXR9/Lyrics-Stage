@@ -343,4 +343,54 @@ describe('Spotify reporting the position ahead after a blend', () => {
     expect(report).toMatch(/desktop "Song B" reported=/);
     b.engine.stop();
   });
+
+  it('ignores stale reports of the old song while Spotify mixes into the next one', () => {
+    clearTimingLog();
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api);
+    engine.start();
+    const A = track('Song A', 200_000);
+    const B = track('Song B', 180_000);
+    const report = (t: typeof A, pos: number) => emit(snap({ track: t, positionMs: pos }));
+    report(A, 190_000);
+    now += 4000;
+    report(A, 194_000);
+    // Song B takes over at 8 s in, then Spotify answers with Song A twice more (stale) between answers about Song B.
+    let truthA = 194_000;
+    let truthB = 8_000;
+    const seqs: number[] = [];
+    for (const which of ['B', 'B', 'A', 'B', 'B', 'A', 'B', 'B']) {
+      now += 500;
+      truthA += 500;
+      truthB += 500;
+      report(which === 'A' ? A : B, which === 'A' ? truthA : truthB + 5875);
+      seqs.push(engine.getState().change.seq);
+    }
+    expect(seqs).toEqual([2, 2, 2, 2, 2, 2, 2, 2]); // one change (1 = first song, 2 = Song B), never flipped back
+    expect(engine.getState().track?.name).toBe('Song B');
+    expect(Math.abs(engine.clock.now() - truthB)).toBeLessThan(300);
+    expect(timingReport([])).toMatch(/ignored a stale report of "Song A"/);
+    engine.stop();
+  });
+
+  it('still follows you when you really go back to the song you just left', () => {
+    const { api, emit } = fakeApi();
+    const engine = new DesktopEngine(api);
+    engine.start();
+    const A = track('Song A', 200_000);
+    const B = track('Song B', 180_000);
+    emit(snap({ track: A, positionMs: 190_000 }));
+    now += 4000;
+    emit(snap({ track: A, positionMs: 194_000 }));
+    now += 500;
+    emit(snap({ track: B, positionMs: 8_000 + 5875 }));
+    expect(engine.getState().track?.name).toBe('Song B');
+    // you press "previous": Song A starts again from its beginning
+    now += 2000;
+    emit(snap({ track: A, positionMs: 300 }));
+    expect(engine.getState().track?.name).toBe('Song A');
+    expect(engine.getState().change.seq).toBe(3);
+    expect(Math.abs(engine.clock.now() - 300)).toBeLessThan(300);
+    engine.stop();
+  });
 });
