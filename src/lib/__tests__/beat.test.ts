@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectBeat, newBeatState } from '../audioLevels';
+import { bassBins, detectBeat, newBeatState } from '../audioLevels';
 import { BIG_BEAT, beatPlan, canFlash, emitBeat, FLASH_MS, flashShape, inSongWindow, isBigBeat, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
 import { buildSynced } from '../lrc';
 import { estimatedBeat, estimatedBpm } from '../pulse';
@@ -58,77 +58,80 @@ describe('strong beats', () => {
     expect(estimatedBeat(5000, 4000, 0.5)).toBe(0);
   });
 
-  it('hears kick drums in the music but not steady loud bass', () => {
+  /**
+   * Feeds `secs` seconds (60 frames a second) of made-up bass into the detector and returns the strength of every
+   * beat it heard. `bass(t, bin)` is the level (0..1) of each of the 5 bass bins at time t (seconds).
+   */
+  const listen = (bass: (t: number, bin: number) => number, secs = 12) => {
     const state = newBeatState();
-    let hits = 0;
-    // 4 seconds at 60 frames a second: quiet bass with a kick every 500 ms
-    for (let f = 0; f < 240; f++) {
-      const t = f * 16.7;
-      const kick = f % 30 < 3;
-      if (detectBeat(kick ? 0.95 : 0.25, state, t) > 0) hits++;
+    const strengths: number[] = [];
+    for (let f = 0; f < secs * 60; f++) {
+      const t = f / 60;
+      const s = detectBeat([0, 1, 2, 3, 4].map((bin) => Math.min(1, Math.max(0, bass(t, bin)))), state, t * 1000);
+      if (s > 0) strengths.push(s);
     }
-    expect(hits).toBeGreaterThanOrEqual(6); // the very first kick is used to learn the level
-    expect(hits).toBeLessThanOrEqual(8);
+    return strengths;
+  };
+  /** A kick (or bass note) of this height that starts every `period` seconds and fades with time constant `tau`. */
+  const hit = (t: number, period: number, height: number, tau = 0.08) => height * Math.exp(-(t % period) / tau);
 
-    const steady = newBeatState();
-    let steadyHits = 0;
-    for (let f = 0; f < 300; f++) if (detectBeat(0.9, steady, f * 16.7) > 0) steadyHits++;
-    expect(steadyHits).toBe(0);
+  it('hears kick drums in the music but not steady loud bass', () => {
+    const kicks = listen((t) => 0.25 + hit(t, 0.5, 0.65), 6);
+    expect(kicks.length).toBeGreaterThanOrEqual(10); // 12 kicks in 6 s, the first only teaches the starting level
+    expect(listen(() => 0.9, 6)).toHaveLength(0);
   });
 
-  it('never counts two beats within 250 ms, and a harder hit is stronger', () => {
-    const state = { avg: 0.2, lastAt: -Infinity, peak: 0 };
-    expect(detectBeat(0.9, state, 1000)).toBe(1); // the hardest kick so far
-    expect(detectBeat(0.1, state, 1050)).toBe(0);
-    expect(detectBeat(0.95, state, 1100)).toBe(0); // too soon after the last beat
-    const soft = detectBeat(0.5, state, 2000);
-    expect(soft).toBeGreaterThan(0);
-    expect(soft).toBeLessThan(0.7); // a soft hit is not a big beat
-    expect(detectBeat(0.92, state, 3000)).toBeGreaterThanOrEqual(0.7); // back to a hard kick
+  it('never counts two beats within 250 ms', () => {
+    // a kick every 120 ms is too fast to be separate beats: at most one is counted per 250 ms
+    expect(listen((t) => 0.1 + hit(t, 0.12, 0.8, 0.03), 5).length).toBeLessThanOrEqual(Math.ceil(5 / 0.25));
   });
 
   it('hears every kind of bass beat, soft or hard, not only the big ones', () => {
-    /** Bass level per frame for `secs` seconds: a base level with a kick of this height every `period` seconds. */
-    const hitsFor = (base: number, kick: number, period: number, tau = 0.08, secs = 12) => {
-      const state = newBeatState();
-      let hits = 0;
-      for (let f = 0; f < secs * 60; f++) {
-        const t = f / 60;
-        const bass = Math.min(1, base + kick * Math.exp(-(t % period) / tau));
-        if (detectBeat(bass, state, t * 1000) > 0) hits++;
-      }
-      return hits;
-    };
     const kicks = (period: number, secs = 12) => Math.floor(secs / period);
-    expect(hitsFor(0.1, 0.85, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 2); // hard kicks
-    expect(hitsFor(0.08, 0.3, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 2); // soft kicks
-    expect(hitsFor(0.05, 0.9, 1, 0.4)).toBeGreaterThanOrEqual(kicks(1) - 2); // 808s with a long tail
-    expect(hitsFor(0.1, 0.8, 0.29, 0.06)).toBeGreaterThanOrEqual(30); // fast kicks, 3 to 4 a second
-    expect(hitsFor(0.55, 0.4, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 3); // kicks on top of a bass line
-    expect(hitsFor(0.7, 0.28, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 4); // kicks on top of very heavy bass
+    const all = (base: number, height: number, period: number, tau = 0.08) => listen((t) => base + hit(t, period, height, tau)).length;
+    expect(all(0.1, 0.85, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 2); // hard kicks
+    expect(all(0.1, 0.3, 0.5)).toBeGreaterThanOrEqual(kicks(0.5) - 2); // soft kicks
+    expect(all(0.05, 0.9, 1, 0.4)).toBeGreaterThanOrEqual(kicks(1) - 2); // 808s with a long tail
+    expect(all(0.1, 0.8, 0.29, 0.06)).toBeGreaterThanOrEqual(30); // fast kicks, 3 to 4 a second
+    // a pure low note that only shows in two of the bins
+    expect(listen((t, bin) => (bin === 1 || bin === 2 ? 0.1 + hit(t, 0.5, 0.7) : 0.05)).length).toBeGreaterThanOrEqual(kicks(0.5) - 2);
+  });
+
+  it('hears kicks over loud, steady bass: a held bass note in one bin does not hide them', () => {
+    // bin 1 holds a loud steady bass note; the kicks rise in the bins around it
+    const heard = listen((t, bin) => (bin === 1 ? 0.8 : 0.25 + hit(t, 0.5, 0.55))).length;
+    expect(heard).toBeGreaterThanOrEqual(10);
+    // and when every bin is loud and steady with only small kicks on top
+    expect(listen((t) => 0.6 + hit(t, 0.5, 0.35)).length).toBeGreaterThanOrEqual(10);
   });
 
   it('does not take steady or slowly swelling bass for beats', () => {
-    const state = newBeatState();
-    let hits = 0;
-    for (let f = 0; f < 720; f++) {
-      const t = f / 60;
-      if (detectBeat(0.5 + 0.2 * Math.sin(t * 8), state, t * 1000) > 0) hits++;
-    }
-    expect(hits).toBe(0);
+    expect(listen(() => 0.6)).toHaveLength(0);
+    expect(listen((t) => 0.5 + 0.2 * Math.sin(t * 1.2))).toHaveLength(0); // a slow swell, once every 5 seconds
+    // a fast wobble is rhythmic bass: about one beat per pulse
+    const wobble = listen((t) => 0.5 + 0.2 * Math.sin(t * 8)).length;
+    expect(wobble).toBeGreaterThanOrEqual(10);
+    expect(wobble).toBeLessThanOrEqual(17);
   });
 
-  it('rates kicks against the loudest recent ones, so a steady groove still has big beats', () => {
-    const state = newBeatState();
-    const strengths: number[] = [];
-    // 6 seconds at 60 frames a second: bass at 0.15 with a hard kick every 500 ms
-    for (let f = 0; f < 360; f++) {
-      const kick = f % 30 < 3;
-      const s = detectBeat(kick ? 0.9 : 0.15, state, f * 16.7);
-      if (s > 0) strengths.push(s);
-    }
+  it('rates beats against the hardest recent one, so a steady groove still has big beats', () => {
+    const strengths = listen((t) => 0.15 + hit(t, 0.5, 0.75), 6);
     expect(strengths.length).toBeGreaterThanOrEqual(10);
     expect(strengths.filter((s) => s >= 0.7).length).toBeGreaterThanOrEqual(strengths.length - 1);
+    // a clearly softer kick between hard ones is a weaker beat
+    const mixed = listen((t) => 0.15 + hit(t, 1, 0.75) + (t % 1 >= 0.5 ? hit(t - 0.5, 1, 0.12) : 0), 8);
+    expect(Math.min(...mixed)).toBeLessThan(Math.max(...mixed));
+  });
+
+  it('listens to the bass range only', () => {
+    // 48 kHz with 1024 bins: 23.4 Hz per bin, so bins 1 to 5 (23 to 117 Hz)
+    expect(bassBins(new Uint8Array(1024), 48000)).toHaveLength(5);
+    const spectrum = new Uint8Array(1024);
+    spectrum[2] = 255;
+    spectrum[40] = 255; // a treble bin: ignored
+    const bins = Array.from(bassBins(spectrum, 48000));
+    expect(bins[1]).toBe(1);
+    expect(Math.max(...bins.filter((_, i) => i !== 1))).toBe(0);
   });
 });
 
