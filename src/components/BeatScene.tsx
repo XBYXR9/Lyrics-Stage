@@ -9,7 +9,7 @@ import { readAudioLevels } from '../lib/audioLevels';
 import { onBeat } from '../lib/beat';
 import type { Clock } from '../lib/clock';
 import { BAR_COUNT, estimatedBars } from '../lib/pulse';
-import { isBigBeat, mean, mixHsl, punchShape, resampleLevels, rippleShape, RIPPLE_MS, withAlpha } from '../lib/scene';
+import { edgeFade, isBigBeat, mean, mixHsl, punchShape, resampleLevels, rippleShape, RIPPLE_MS, withAlpha } from '../lib/scene';
 import type { NoLyricsVisual } from '../lib/settings';
 import type { Palette } from '../lib/types';
 
@@ -125,9 +125,16 @@ function drawOrb(
   const base = Math.min(w, h * 1.15) * 0.17;
   const r = base * (1 + punch + bass * 0.1);
 
+  // How far the picture reaches from the center to its nearest edge: the glow and the rings fade out before it, so
+  // nothing is sliced off in a straight line where the picture's box ends (beside the cover and player).
+  const room = Math.min(cx, w - cx, cy, h - cy);
+
   // A soft glow behind everything that swells with the bass.
-  const glow = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r * (2.4 + bass * 0.8 + punch * 2));
-  glow.addColorStop(0, withAlpha(p.accent, 0.28 + bass * 0.25 + punch * 0.4));
+  const glowEnd = Math.max(r * 0.8, Math.min(r * (2.4 + bass * 0.8 + punch * 2), room));
+  const glowAlpha = 0.28 + bass * 0.25 + punch * 0.4;
+  const glow = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, glowEnd);
+  glow.addColorStop(0, withAlpha(p.accent, glowAlpha));
+  glow.addColorStop(0.5, withAlpha(p.accent, glowAlpha * 0.35));
   glow.addColorStop(1, withAlpha(p.accent, 0));
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, w, h);
@@ -136,7 +143,9 @@ function drawOrb(
   for (const rp of ripples) {
     const s = rippleShape(now - rp.at, rp.strength);
     if (!s) continue;
-    ctx.strokeStyle = withAlpha(isBigBeat(rp.strength) ? p.accent2 : p.accent, s.alpha);
+    const fade = edgeFade(base * s.radius, room);
+    if (fade <= 0) continue;
+    ctx.strokeStyle = withAlpha(isBigBeat(rp.strength) ? p.accent2 : p.accent, s.alpha * fade);
     ctx.lineWidth = s.width;
     ctx.beginPath();
     ctx.arc(cx, cy, base * s.radius, 0, Math.PI * 2);
@@ -189,13 +198,19 @@ function drawEqualizer(
   const slot = span / EQ_BARS;
   const maxH = Math.min(h * 0.62, 520);
 
+  // The glow and the rings fade out before the picture's edge (see drawOrb).
+  const room = Math.min(cx, w - cx);
+
   // A glow along the middle that swells with the bass, and a wide pulse on strong beats.
-  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, span * 0.6);
-  glow.addColorStop(0, withAlpha(p.accent, 0.2 + bass * 0.22 + punch * 0.4));
+  const glowR = Math.min(span * 0.6, room);
+  const glowAlpha = 0.2 + bass * 0.22 + punch * 0.4;
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+  glow.addColorStop(0, withAlpha(p.accent, glowAlpha));
+  glow.addColorStop(0.5, withAlpha(p.accent, glowAlpha * 0.35));
   glow.addColorStop(1, withAlpha(p.accent, 0));
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.scale(1, (maxH * 0.5) / (span * 0.6));
+  ctx.scale(1, (maxH * 0.5) / glowR);
   ctx.translate(-cx, -cy);
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, w, h * 4);
@@ -204,9 +219,11 @@ function drawEqualizer(
   for (const rp of ripples) {
     const s = rippleShape(now - rp.at, rp.strength);
     if (!s) continue;
-    ctx.strokeStyle = withAlpha(isBigBeat(rp.strength) ? p.accent2 : p.accent, s.alpha);
-    ctx.lineWidth = s.width;
     const reach = (span / 2) * Math.min(1.2, 0.25 + (s.radius - 1.15) * 0.3);
+    const fade = edgeFade(reach, room);
+    if (fade <= 0) continue;
+    ctx.strokeStyle = withAlpha(isBigBeat(rp.strength) ? p.accent2 : p.accent, s.alpha * fade);
+    ctx.lineWidth = s.width;
     ctx.beginPath();
     ctx.ellipse(cx, cy, reach, reach * 0.42, 0, 0, Math.PI * 2);
     ctx.stroke();

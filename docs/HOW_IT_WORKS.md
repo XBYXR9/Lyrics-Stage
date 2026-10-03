@@ -261,7 +261,10 @@ When the lyrics are `none` or `instrumental` (and Reduce motion is off, and the 
 `LyricsLayer` shows `BeatScene` (`src/components/BeatScene.tsx`) instead of a message: a canvas in the cover's colors,
 either an orb with 48 bars around it or a mirrored equalizer. It reads the same bar heights as the break visualizer
 (real sound or estimate) and listens to the beat bus: each beat adds a ripple and a punch (`src/lib/scene.ts`), and
-beats of strength 0.7 or more are "big": a harder punch and a shockwave that reaches much further.
+beats of strength 0.7 or more are "big": a harder punch and a shockwave that reaches much further. The scene is drawn
+in the lyrics area only (beside the cover and player), so its glow and rings fade out before the area's nearest edge
+(`edgeFade` in `src/lib/scene.ts`); otherwise they would end in a hard straight line there and the screen would look
+split in two. The bars blend the two album colors smoothly all the way round (`mixHsl`).
 
 ### Lyrics only
 
