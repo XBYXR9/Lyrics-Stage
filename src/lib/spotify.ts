@@ -73,8 +73,12 @@ async function request<T>(path: string, opts: RequestOptions = {}, retried = fal
     const retryAfter = Number(res.headers.get('Retry-After'));
     throw new SpotifyError(res.status, message, reason, retryAfter > 0 ? retryAfter * 1000 : undefined);
   }
+  // Playback commands (play, pause, next, seek, volume…) used to answer with
+  // nothing; Spotify now sends a short plain-text id instead. Only JSON answers
+  // carry data we use.
   const text = await res.text();
-  return text ? (JSON.parse(text) as T) : null;
+  const isJson = /json/i.test(res.headers.get('Content-Type') ?? '') || /^\s*[[{]/.test(text);
+  return text && isJson ? (JSON.parse(text) as T) : null;
 }
 
 // ---- Raw API shapes (only the fields we use) ----
