@@ -16,7 +16,7 @@ the same way.
 - **The screen stays on while a song plays**, and the back button closes a panel before it leaves the app.
 - **A recording view for TikTok.** **Settings → Record for TikTok → Start the recording view** fills the screen with a
   9:16 frame of the lyrics (the status bar and every button hidden). Start your phone's screen recorder, open it, and
-  trim the recording afterwards. The Back button leaves it.
+  trim the recording afterwards. The Back button leaves it. Record without sound and add the song in TikTok.
 - **Automix and Crossfade work** like everywhere else: the lyrics blend with the music, and "Keep lyrics in time after
   a blend" is on. If one song is out of time, **Settings → Lyrics timing → Later / Earlier** nudges just that song.
 

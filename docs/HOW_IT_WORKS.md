@@ -286,8 +286,14 @@ itself: you record the screen with OBS or the phone's screen recorder and crop t
   far too big in a narrow frame. The block at the end of `src/styles/lyrics.css` re-sizes the text, the bars and the
   glow from `--rec-w` and `--rec-h`. The background canvas and the Spotlight style read the frame's size too.
 - **What goes away.** The top bar, the cover and player, the Automix badge and the toasts (the hints and the ✕ sit
-  outside the frame on a wide screen). The lyrics keep clear of the top (cover and name) and the bottom (where TikTok
-  puts its own caption and buttons).
+  outside the frame on a wide screen).
+- **TikTok's safe area.** TikTok draws its own buttons over the video, so nothing important goes under them: the top
+  14% (the LIVE / Following / For You bar) holds only the picture, the cover and song name start at 15%, and the lyrics
+  stay between 23% and 78% of the height and 12% in from each side (the like / comment / share buttons are on the
+  right, the caption and sound name at the bottom). It is the padding of `.stage-main` and the position of `.rec-hud`
+  in `src/styles/app.css`.
+- **Sound.** The app records nothing, and TikTok flags a video with the song's audio inside the file as copyrighted
+  and mutes it. The recording should be without sound, with the song added in TikTok (*Add sound*).
 - **Full screen.** It asks the browser for fullscreen (on the phone it hides the status and navigation bars instead
   with Capacitor's `SystemBars`), and it ends when fullscreen ends (Esc), on <kbd>R</kbd>, on the ✕, or with the
   phone's Back button. The screen is kept awake while it's on.
