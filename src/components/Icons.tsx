@@ -60,6 +60,12 @@ export const ExpandIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
   </svg>
 );
+export const PortraitIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" />
+    <path d="M10.5 18.5h3" />
+  </svg>
+);
 export const LyricsIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M4 6h16M4 12h11M4 18h14" />

@@ -67,7 +67,9 @@ export function Background({
     canvas.classList.toggle('css-blur', !canFilter);
 
     const resize = () => {
-      const aspect = window.innerHeight / Math.max(1, window.innerWidth);
+      // The shape of the area it fills (the whole screen, or the 9:16 frame of the recording view).
+      const box = canvas.parentElement;
+      const aspect = (box?.clientHeight || window.innerHeight) / Math.max(1, box?.clientWidth || window.innerWidth);
       const h = Math.max(48, Math.round(W * aspect));
       canvas.width = scratch.width = W;
       canvas.height = scratch.height = h;

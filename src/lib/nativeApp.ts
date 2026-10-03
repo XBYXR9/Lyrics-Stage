@@ -8,7 +8,7 @@
 // Spotify app plays and this app shows the lyrics, like the desktop app does.
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, SystemBars } from '@capacitor/core';
 import type { SpotifyLoginResult } from './desktopTypes';
 
 /** Spotify sends people back here after the login. It must be added as a Redirect URI in the Spotify developer app. */
@@ -125,4 +125,9 @@ export function onNativeBack(handler: () => boolean): () => void {
     gone = true;
     remove?.();
   };
+}
+
+/** Hides the status and navigation bars (the recording view) or brings them back. */
+export function setSystemBarsHidden(hidden: boolean): void {
+  void (hidden ? SystemBars.hide() : SystemBars.show()).catch(() => {});
 }

@@ -272,6 +272,26 @@ Switching "lyrics only" on slides the cover and player away (the cover shrinks, 
 lyrics widen; switching it off brings them back with a little pop. The player stays mounted until its exit animation
 ends (`usePresence` in `src/hooks/hooks.ts`). "Reduce motion" skips all of it.
 
+### The recording view (TikTok)
+
+<kbd>R</kbd>, the phone-shaped button or Settings → Record for TikTok turns the whole picture (background, beat flash,
+lyrics, cover and song name) into a 9:16 frame in the middle of a black, full screen. The app doesn't record anything
+itself: you record the screen with OBS or the phone's screen recorder and crop to the frame.
+
+- **The frame.** `recordFrame()` in `src/lib/record.ts` picks the biggest 9:16 box that fits the window (608 × 1080 on a
+  1920 × 1080 screen, the full width of a phone with black bars above and below). Everything that is part of the
+  picture lives inside one `.stage-frame` element, which is simply the whole screen normally. In the recording view
+  it gets that size, and the main screen sets `--rec-w` and `--rec-h` on it.
+- **Sizes follow the frame, not the screen.** The lyric styles size their text from the screen's width, which would be
+  far too big in a narrow frame. The block at the end of `src/styles/lyrics.css` re-sizes the text, the bars and the
+  glow from `--rec-w` and `--rec-h`. The background canvas and the Spotlight style read the frame's size too.
+- **What goes away.** The top bar, the cover and player, the Automix badge and the toasts (the hints and the ✕ sit
+  outside the frame on a wide screen). The lyrics keep clear of the top (cover and name) and the bottom (where TikTok
+  puts its own caption and buttons).
+- **Full screen.** It asks the browser for fullscreen (on the phone it hides the status and navigation bars instead
+  with Capacitor's `SystemBars`), and it ends when fullscreen ends (Esc), on <kbd>R</kbd>, on the ✕, or with the
+  phone's Back button. The screen is kept awake while it's on.
+
 ## 8. Demo mode (`src/lib/demo.ts`)
 
 `DemoEngine` implements the same `Engine` interface as the real one, using three made-up songs, generated covers and a

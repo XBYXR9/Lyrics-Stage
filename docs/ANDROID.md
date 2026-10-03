@@ -14,6 +14,9 @@ the same way.
   itself, through a link of its own (`lyricsstage://callback`). Like the desktop app, you need a free Spotify developer
   app (a one-time setup), unless the release was built with a Client ID already in it.
 - **The screen stays on while a song plays**, and the back button closes a panel before it leaves the app.
+- **A recording view for TikTok.** **Settings → Record for TikTok → Start the recording view** fills the screen with a
+  9:16 frame of the lyrics (the status bar and every button hidden). Start your phone's screen recorder, open it, and
+  trim the recording afterwards. The Back button leaves it.
 - **Automix and Crossfade work** like everywhere else: the lyrics blend with the music, and "Keep lyrics in time after
   a blend" is on. If one song is out of time, **Settings → Lyrics timing → Later / Earlier** nudges just that song.
 

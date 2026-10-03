@@ -280,6 +280,12 @@ kbd {
     --accent2 1.2s ease;
 }
 
+/* Everything that is part of the picture (the recording view makes this a 9:16 frame, see the end of this file). */
+.stage-frame {
+  position: absolute;
+  inset: 0;
+}
+
 .bg {
   position: absolute;
   inset: 0;
@@ -330,6 +336,7 @@ kbd {
 .controls-hidden .topbar .icon-btn,
 .controls-hidden .topbar .style-btn,
 .controls-hidden .topbar .update-pill,
+.controls-hidden .rec-exit,
 .controls-hidden .np-controls,
 .controls-hidden .np-volume,
 .controls-hidden .devices {
@@ -1547,4 +1554,118 @@ kbd {
   padding: 0;
   font-size: inherit;
   color: #fff;
+}
+
+/* ---------- Recording view (TikTok): a 9:16 frame, nothing else ---------- */
+/* --rec-w and --rec-h are the frame's size in pixels (set by the main screen); the lyric sizes
+   for the frame are at the end of lyrics.css. */
+.stage.rec {
+  background: #000;
+}
+.stage.rec .stage-frame {
+  margin: auto;
+  width: var(--rec-w);
+  height: var(--rec-h);
+  overflow: hidden;
+  isolation: isolate;
+}
+.stage.rec .stage-main {
+  display: grid;
+  grid-template-columns: 1fr;
+  /* leaves room for the song name above, and for TikTok's own caption and buttons below */
+  padding: calc(var(--rec-h) * 0.15) 0 calc(var(--rec-h) * 0.17);
+}
+.stage.rec .toasts {
+  display: none;
+}
+.rec-hud {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--rec-h) * 0.07);
+  left: calc(var(--rec-w) * 0.07);
+  right: calc(var(--rec-w) * 0.07);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--rec-w) * 0.03);
+  animation: fade-up 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rec-cover {
+  flex: none;
+  width: calc(var(--rec-w) * 0.12);
+  height: calc(var(--rec-w) * 0.12);
+  border-radius: calc(var(--rec-w) * 0.016);
+  object-fit: cover;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.rec-meta {
+  min-width: 0;
+}
+.rec-title,
+.rec-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rec-title {
+  font-size: calc(var(--rec-w) * 0.038);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.rec-artist {
+  margin-top: 0.15em;
+  font-size: calc(var(--rec-w) * 0.03);
+  color: rgba(255, 255, 255, 0.7);
+}
+/* Outside the frame on a wide screen (on a phone they sit on top of it for a moment). */
+.rec-exit {
+  position: fixed;
+  z-index: 30;
+  top: max(14px, env(safe-area-inset-top), var(--safe-area-inset-top, 0px));
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(12px);
+  transition:
+    background 0.2s,
+    opacity 0.2s;
+}
+.rec-exit:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+.rec-hint {
+  position: fixed;
+  z-index: 30;
+  top: max(20px, env(safe-area-inset-top), var(--safe-area-inset-top, 0px));
+  left: 20px;
+  max-width: calc(100vw - 90px);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+  animation: rec-hint 7s ease forwards;
+}
+@keyframes rec-hint {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.calm-ui .rec-hud {
+  animation: none;
 }
