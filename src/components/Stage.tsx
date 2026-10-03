@@ -1,12 +1,12 @@
 // The main screen: background, player panel, lyrics, top bar and panels.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useBeatFlash, useRealSound } from '../hooks/beatHooks';
-import { useEngineState, useKeepAwake, useLyrics, usePalette, usePresence } from '../hooks/hooks';
+import { useEngineState, useKeepAwake, useLyrics, usePalette, usePresence, useRecordFrame } from '../hooks/hooks';
 import { loginStaysInApp, startLogin } from '../lib/auth';
 import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
-import { isNativeApp, onNativeBack } from '../lib/nativeApp';
+import { isNativeApp, onNativeBack, setSystemBarsHidden } from '../lib/nativeApp';
 import { describeNudge, nudgeBy } from '../lib/nudge';
 import { showsScene } from '../lib/scene';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
@@ -17,7 +17,7 @@ import { visualTransitionMs } from '../lib/transitions';
 import type { Palette, StyleChoice } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
 import { Background } from './Background';
-import { ExpandIcon, LyricsIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
+import { CloseIcon, ExpandIcon, LyricsIcon, PortraitIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
 import { LyricsStage } from './LyricsStage';
 import { NowPlaying, VOLUME_STEP } from './NowPlaying';
 import { SearchPanel } from './SearchPanel';
@@ -114,6 +114,15 @@ export function Stage({
   const panelRef = useRef(panel);
   panelRef.current = panel;
   const native = isNativeApp();
+  // The recording view: a full-screen 9:16 frame with no buttons, to record for TikTok.
+  const [recording, setRecording] = useState(false);
+  const recordingRef = useRef(recording);
+  recordingRef.current = recording;
+  const recFrame = useRecordFrame(recording);
+  const startRecording = useCallback(() => {
+    setPanel(null);
+    setRecording(true);
+  }, []);
   const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
   // A timing nudge for the song playing now (keys , and .): only changes when the lyrics show, and ends with the song.
@@ -136,7 +145,7 @@ export function Stage({
 
   // Switching "lyrics only" on slides the cover and player away; switching it off brings them back.
   const presence = usePresence(!settings.lyricsOnly, settings.reduceMotion ? 0 : PANEL_EXIT_MS);
-  const showPanel = !!track && presence.mounted;
+  const showPanel = !!track && presence.mounted && !recording;
   const panelLeaving = presence.leaving;
   useEffect(() => {
     // The lyrics area changed width: lyric styles that measure themselves look again.
@@ -145,11 +154,39 @@ export function Stage({
     return () => clearTimeout(id);
   }, [settings.lyricsOnly]);
 
+  // The recording view goes full screen (on the phone, the status and navigation bars hide instead) and ends when
+  // fullscreen ends (Esc). The things that measure themselves look again when the frame appears and goes away.
+  useEffect(() => {
+    if (!recording) return;
+    const alreadyFullscreen = !!document.fullscreenElement;
+    let wasFullscreen = alreadyFullscreen;
+    const onChange = () => {
+      if (document.fullscreenElement) wasFullscreen = true;
+      else if (wasFullscreen) setRecording(false);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    if (native) setSystemBarsHidden(true);
+    else if (!alreadyFullscreen) void document.documentElement.requestFullscreen?.().catch(() => {});
+    const looked = setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+    return () => {
+      clearTimeout(looked);
+      document.removeEventListener('fullscreenchange', onChange);
+      if (native) setSystemBarsHidden(false);
+      else if (!alreadyFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+    };
+  }, [recording, native]);
+
   // Android app: keep the screen on while a song plays, and let the back button close a panel before it leaves the app.
-  useKeepAwake(native && state.isPlaying);
+  // The recording view keeps the screen on everywhere, so it doesn't go dark in the middle of a take.
+  useKeepAwake((native || recording) && state.isPlaying);
   useEffect(() => {
     if (!native) return;
     return onNativeBack(() => {
+      if (recordingRef.current) {
+        setRecording(false);
+        return true;
+      }
       if (!panelRef.current) return false;
       setPanel(null);
       return true;
@@ -239,18 +276,23 @@ export function Stage({
         case 'p':
           void run(engine.previous());
           break;
+        case 'r':
+          if (recordingRef.current) setRecording(false);
+          else startRecording();
+          break;
+        // The recording view shows nothing but the lyrics: no panels, no fullscreen switch.
         case '/':
           e.preventDefault();
-          setPanel('search');
+          if (!recordingRef.current) setPanel('search');
           break;
         case 's':
-          setPanel((p) => (p === 'settings' ? null : 'settings'));
+          if (!recordingRef.current) setPanel((p) => (p === 'settings' ? null : 'settings'));
           break;
         case 'l':
-          updateSettings({ lyricsOnly: !getSettings().lyricsOnly });
+          if (!recordingRef.current) updateSettings({ lyricsOnly: !getSettings().lyricsOnly });
           break;
         case 'f':
-          toggleFullscreen();
+          if (!recordingRef.current) toggleFullscreen();
           break;
         case 'y':
           cycleStyle();
@@ -285,12 +327,13 @@ export function Stage({
         }
         case 'escape':
           setPanel(null);
+          setRecording(false);
           break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [engine]);
+  }, [engine, nudgeLyrics, startRecording]);
 
   // The web version leaves the page to log in again; the desktop app logs in through the browser and restarts the connection.
   const reconnect = async () => {
@@ -402,133 +445,163 @@ export function Stage({
     '--accent': palette.accent,
     '--accent2': palette.accent2,
     '--base': palette.base,
+    ...(recording ? { '--rec-w': `${recFrame.width}px`, '--rec-h': `${recFrame.height}px` } : null),
   } as CSSProperties;
 
   return (
     <div
-      className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${native ? ' is-native' : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
+      className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${native ? ' is-native' : ''}${recording ? ' rec' : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
         track ? '' : ' no-track'
       }${hideControls ? ' controls-hidden' : ''}${settings.reduceMotion ? ' calm-ui' : ''}`}
       style={stageStyle}
     >
-      <Background
-        artUrl={scene.url}
-        palette={scene.palette}
-        mode={settings.background}
-        motion={vibe?.motion ?? 0.8}
-        transitionMs={transitionMs}
-        reduceMotion={settings.reduceMotion}
-        shade={0.14 + scene.palette.brightness * 0.42}
-      />
+      {/* Everything that is part of the picture. In the recording view this is the 9:16 frame in the middle of the screen. */}
+      <div className="stage-frame">
+        <Background
+          artUrl={scene.url}
+          palette={scene.palette}
+          mode={settings.background}
+          motion={vibe?.motion ?? 0.8}
+          transitionMs={transitionMs}
+          reduceMotion={settings.reduceMotion}
+          shade={0.14 + scene.palette.brightness * 0.42}
+        />
 
-      <div
-        className={`decor${currentStyle === 'neon' && track ? ' on' : ''}${settings.reduceMotion ? ' calm' : ''}`}
-        style={{ '--motion': (vibe?.motion ?? 1).toFixed(2) } as CSSProperties}
-        aria-hidden
-      >
-        {currentStyle === 'neon' && (
-          <>
-            <div className="ne-grid" />
-            <div className="ne-scan" />
-          </>
-        )}
-      </div>
-
-      {/* behind the lyrics: the beat flash (its look is picked in Settings; the variables are set every frame) */}
-      <div className="beat-fx" data-style={settings.beatStyle} ref={fxRef} aria-hidden>
-        <div className="bf-glow" />
-        <div className="bf-ring" />
-        <div className="bf-screen" />
-        <div className="bf-edges" />
-      </div>
-
-      <header className="topbar">
-        {askSound && (
-          <span
-            className="pill ask-pill"
-            role="group"
-            aria-label="Follow the computer's sound?"
-            title="The sound is only used while a song plays, analysed inside the app and never recorded or sent anywhere. You can change this in Settings."
-          >
-            <span>Make the effects follow your PC’s sound?</span>
-            <button onClick={() => updateSettings({ soundSync: 'on' })}>Yes</button>
-            <button onClick={() => updateSettings({ soundSync: 'off' })}>No thanks</button>
-          </span>
-        )}
-        {nudgeMs !== 0 && (
-          <button
-            className="pill nudge-pill"
-            onClick={() => setSongNudge({ key: null, ms: 0 })}
-            title="Back to normal timing for this song"
-          >
-            {describeNudge(nudgeMs)} · Reset
-          </button>
-        )}
-        {engine.isDemo && <span className="pill hide-mobile">Demo · no sound</span>}
-        {state.problem && !state.authExpired && <span className="pill warn">{state.problem}</span>}
-        {desktop && track && state.spotifyApp && !state.spotifyApp.running && (
-          <span className="pill warn">Spotify is closed</span>
-        )}
-        {desktop && track && state.spotifyApp?.running && !state.spotifyApp.exactPosition && (
-          <span className="pill hide-mobile" title="Spotify's Linux app doesn't share the song position, so timing starts when each song starts. Tap a lyric line to sync.">
-            Timing estimated · tap a line to sync
-          </span>
-        )}
-        {update?.state === 'ready' && (
-          <button className="pill update-pill" onClick={() => void desktopApi()?.installUpdate()} title={`Restart to use version ${update.version}`}>
-            Update ready · Restart
-          </button>
-        )}
-        {update?.state === 'available' && (
-          <a className="pill update-pill" href={update.url} target="_blank" rel="noreferrer" title="Opens the download page">
-            Version {update.version} is out · Download
-          </a>
-        )}
-        {settings.lyricsOnly && track && (
-          <span className="lo-caption">
-            {track.name} · {track.artists.join(', ')}
-          </span>
-        )}
-        <div className="spacer" />
-        <button className="icon-btn" onClick={() => setPanel(panel === 'search' ? null : 'search')} aria-label="Search" title="Search (/)">
-          <SearchIcon />
-        </button>
-        <button className="style-btn" onClick={cycleStyle} title="Next lyrics style (Y)">
-          <SparkleIcon width={16} height={16} />
-          <span>{settings.style === 'auto' ? `Auto · ${styleName(currentStyle)}` : styleName(settings.style)}</span>
-        </button>
-        <button
-          className={`icon-btn${settings.lyricsOnly ? ' on' : ''}`}
-          onClick={() => updateSettings({ lyricsOnly: !settings.lyricsOnly })}
-          aria-label="Lyrics only"
-          title="Lyrics only (L)"
+        <div
+          className={`decor${currentStyle === 'neon' && track ? ' on' : ''}${settings.reduceMotion ? ' calm' : ''}`}
+          style={{ '--motion': (vibe?.motion ?? 1).toFixed(2) } as CSSProperties}
+          aria-hidden
         >
-          <LyricsIcon />
-        </button>
-        <button className="icon-btn" onClick={() => setPanel(panel === 'settings' ? null : 'settings')} aria-label="Settings" title="Settings (S)">
-          <SettingsIcon />
-        </button>
-        <button className="icon-btn hide-mobile" onClick={toggleFullscreen} aria-label="Fullscreen" title="Fullscreen (F)">
-          <ExpandIcon />
-        </button>
-      </header>
+          {currentStyle === 'neon' && (
+            <>
+              <div className="ne-grid" />
+              <div className="ne-scan" />
+            </>
+          )}
+        </div>
 
-      {badge && (
+        {/* behind the lyrics: the beat flash (its look is picked in Settings; the variables are set every frame) */}
+        <div className="beat-fx" data-style={settings.beatStyle} ref={fxRef} aria-hidden>
+          <div className="bf-glow" />
+          <div className="bf-ring" />
+          <div className="bf-screen" />
+          <div className="bf-edges" />
+        </div>
+
+        {recording && settings.recordInfo && track && (
+          <div className="rec-hud" key={track.key}>
+            {track.artUrl && <img className="rec-cover" src={track.artUrl} alt="" />}
+            <div className="rec-meta">
+              <div className="rec-title">{track.name}</div>
+              <div className="rec-artist">{track.artists.join(', ')}</div>
+            </div>
+          </div>
+        )}
+
+        <main className={`stage-main${showPanel ? ' has-panel' : ''}`}>
+          {showPanel && (
+            <div className={`np-slot${panelLeaving ? ' leaving' : ''}`} inert={panelLeaving || undefined}>
+              <NowPlaying engine={engine} state={state} />
+            </div>
+          )}
+          <div className="stage-lyrics" ref={kickRef}>
+            {content}
+          </div>
+        </main>
+      </div>
+
+      {recording && (
+        <>
+          <button className="rec-exit" onClick={() => setRecording(false)} aria-label="Leave the recording view" title="Leave (Esc)">
+            <CloseIcon />
+          </button>
+          <div className="rec-hint" role="status">
+            Recording view · {recFrame.width} × {recFrame.height} · {native ? 'Back' : 'Esc'} to leave
+          </div>
+        </>
+      )}
+
+      {!recording && (
+        <header className="topbar">
+          {askSound && (
+            <span
+              className="pill ask-pill"
+              role="group"
+              aria-label="Follow the computer's sound?"
+              title="The sound is only used while a song plays, analysed inside the app and never recorded or sent anywhere. You can change this in Settings."
+            >
+              <span>Make the effects follow your PC’s sound?</span>
+              <button onClick={() => updateSettings({ soundSync: 'on' })}>Yes</button>
+              <button onClick={() => updateSettings({ soundSync: 'off' })}>No thanks</button>
+            </span>
+          )}
+          {nudgeMs !== 0 && (
+            <button
+              className="pill nudge-pill"
+              onClick={() => setSongNudge({ key: null, ms: 0 })}
+              title="Back to normal timing for this song"
+            >
+              {describeNudge(nudgeMs)} · Reset
+            </button>
+          )}
+          {engine.isDemo && <span className="pill hide-mobile">Demo · no sound</span>}
+          {state.problem && !state.authExpired && <span className="pill warn">{state.problem}</span>}
+          {desktop && track && state.spotifyApp && !state.spotifyApp.running && (
+            <span className="pill warn">Spotify is closed</span>
+          )}
+          {desktop && track && state.spotifyApp?.running && !state.spotifyApp.exactPosition && (
+            <span className="pill hide-mobile" title="Spotify's Linux app doesn't share the song position, so timing starts when each song starts. Tap a lyric line to sync.">
+              Timing estimated · tap a line to sync
+            </span>
+          )}
+          {update?.state === 'ready' && (
+            <button className="pill update-pill" onClick={() => void desktopApi()?.installUpdate()} title={`Restart to use version ${update.version}`}>
+              Update ready · Restart
+            </button>
+          )}
+          {update?.state === 'available' && (
+            <a className="pill update-pill" href={update.url} target="_blank" rel="noreferrer" title="Opens the download page">
+              Version {update.version} is out · Download
+            </a>
+          )}
+          {settings.lyricsOnly && track && (
+            <span className="lo-caption">
+              {track.name} · {track.artists.join(', ')}
+            </span>
+          )}
+          <div className="spacer" />
+          <button className="icon-btn" onClick={() => setPanel(panel === 'search' ? null : 'search')} aria-label="Search" title="Search (/)">
+            <SearchIcon />
+          </button>
+          <button className="style-btn" onClick={cycleStyle} title="Next lyrics style (Y)">
+            <SparkleIcon width={16} height={16} />
+            <span>{settings.style === 'auto' ? `Auto · ${styleName(currentStyle)}` : styleName(settings.style)}</span>
+          </button>
+          <button
+            className={`icon-btn${settings.lyricsOnly ? ' on' : ''}`}
+            onClick={() => updateSettings({ lyricsOnly: !settings.lyricsOnly })}
+            aria-label="Lyrics only"
+            title="Lyrics only (L)"
+          >
+            <LyricsIcon />
+          </button>
+          <button className="icon-btn" onClick={() => setPanel(panel === 'settings' ? null : 'settings')} aria-label="Settings" title="Settings (S)">
+            <SettingsIcon />
+          </button>
+          <button className="icon-btn" onClick={startRecording} aria-label="Record for TikTok" title="Recording view for TikTok, 9:16 (R)">
+            <PortraitIcon />
+          </button>
+          <button className="icon-btn hide-mobile" onClick={toggleFullscreen} aria-label="Fullscreen" title="Fullscreen (F)">
+            <ExpandIcon />
+          </button>
+        </header>
+      )}
+
+      {badge && !recording && (
         <div className="badge" role="status">
           <SparkleIcon width={14} height={14} /> {badge}
         </div>
       )}
-
-      <main className={`stage-main${showPanel ? ' has-panel' : ''}`}>
-        {showPanel && (
-          <div className={`np-slot${panelLeaving ? ' leaving' : ''}`} inert={panelLeaving || undefined}>
-            <NowPlaying engine={engine} state={state} />
-          </div>
-        )}
-        <div className="stage-lyrics" ref={kickRef}>
-          {content}
-        </div>
-      </main>
 
       {panel === 'search' && <SearchPanel engine={engine} onClose={() => setPanel(null)} />}
       {panel === 'settings' && (
@@ -544,6 +617,7 @@ export function Stage({
           songNudgeMs={nudgeMs}
           onNudge={nudgeLyrics}
           onResetNudge={() => setSongNudge({ key: null, ms: 0 })}
+          onRecord={startRecording}
         />
       )}
 

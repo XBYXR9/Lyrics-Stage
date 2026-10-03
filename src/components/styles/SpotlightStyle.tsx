@@ -1,6 +1,7 @@
 // Spotlight: one line at a time in big elegant type. Words come into focus as
 // they're sung; the line then melts away as the next one rises up.
 import { Fragment, useRef, type CSSProperties } from 'react';
+import { stageHeight } from '../../lib/record';
 import { Dots, paintDots } from './Dots';
 import { seekTarget, sungCount, useLyricTimeline, useStackOffsets, wordByWord, type StyleProps } from './shared';
 
@@ -32,7 +33,7 @@ export function SpotlightStyle(props: StyleProps) {
   for (let i = Math.max(0, active - 1); i <= Math.min(lines.length - 1, active + 1); i++) visible.push(i);
   const offsets = useStackOffsets(active, visible, lineEls.current, (slot) => SCALE[slot] ?? 0.42, 0.6);
   // The upcoming line sits low on the screen; the finished one floats away upward.
-  const extra = (slot: number) => (slot > 0 ? window.innerHeight * 0.14 : slot < 0 ? -window.innerHeight * 0.08 : 0);
+  const extra = (slot: number) => (slot > 0 ? stageHeight() * 0.14 : slot < 0 ? -stageHeight() * 0.08 : 0);
 
   return (
     <div

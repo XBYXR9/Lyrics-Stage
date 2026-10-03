@@ -8,10 +8,19 @@ const shell = vi.hoisted(() => {
     fire: (name: string, event?: unknown) => (listeners[name] ?? []).forEach((l) => l(event)),
     launchUrl: null as string | null,
     openFails: false,
+    barsFail: false,
   };
 });
 
-vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true } }));
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => true },
+  SystemBars: {
+    hide: vi.fn(async () => {
+      if (shell.barsFail) throw new Error('no bars');
+    }),
+    show: vi.fn(async () => {}),
+  },
+}));
 vi.mock('@capacitor/app', () => ({
   App: {
     addListener: vi.fn(async (name: string, cb: (e: unknown) => void) => {
@@ -175,5 +184,27 @@ describe('the Android back button', () => {
     expect(App.minimizeApp).not.toHaveBeenCalled();
     shell.fire('backButton');
     expect(App.minimizeApp).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the recording view on the phone', () => {
+  it('hides the status and navigation bars, and brings them back', async () => {
+    const { setSystemBarsHidden } = await load();
+    const { SystemBars } = await import('@capacitor/core');
+    setSystemBarsHidden(true);
+    expect(SystemBars.hide).toHaveBeenCalledTimes(1);
+    setSystemBarsHidden(false);
+    expect(SystemBars.show).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not break when the phone refuses', async () => {
+    const { setSystemBarsHidden } = await load();
+    shell.barsFail = true;
+    try {
+      expect(() => setSystemBarsHidden(true)).not.toThrow();
+      await Promise.resolve();
+    } finally {
+      shell.barsFail = false;
+    }
   });
 });

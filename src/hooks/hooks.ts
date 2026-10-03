@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Engine, EngineState } from '../lib/engine';
 import { getLyrics, hasCachedLyrics } from '../lib/lyrics';
 import { FALLBACK_PALETTE, getPalette } from '../lib/palette';
+import { recordFrame, type RecordFrame } from '../lib/record';
 import type { Lyrics, Palette, TrackInfo } from '../lib/types';
 
 export function useEngineState(engine: Engine): EngineState {
@@ -151,4 +152,21 @@ export function useKeepAwake(on: boolean) {
       void lock?.release().catch(() => {});
     };
   }, [on]);
+}
+
+/** The 9:16 frame of the recording view, kept up to date while the window changes size. */
+export function useRecordFrame(active: boolean): RecordFrame {
+  const [frame, setFrame] = useState(() => recordFrame(window.innerWidth, window.innerHeight));
+  useEffect(() => {
+    if (!active) return;
+    const update = () =>
+      setFrame((old) => {
+        const next = recordFrame(window.innerWidth, window.innerHeight);
+        return next.width === old.width && next.height === old.height ? old : next;
+      });
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [active]);
+  return frame;
 }

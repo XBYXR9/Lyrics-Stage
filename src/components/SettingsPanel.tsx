@@ -10,7 +10,7 @@ import { isNativeApp } from '../lib/nativeApp';
 import type { EngineKind } from '../lib/engine';
 import { updateSettings, type BeatStyle, type Settings } from '../lib/settings';
 import type { StyleChoice, Vibe } from '../lib/types';
-import { CloseIcon } from './Icons';
+import { CloseIcon, PortraitIcon } from './Icons';
 import { STYLES, styleName } from './styles';
 
 const BEAT_STYLES: { id: BeatStyle; name: string; blurb: string }[] = [
@@ -36,6 +36,7 @@ export function SettingsPanel({
   songNudgeMs = 0,
   onNudge,
   onResetNudge,
+  onRecord,
 }: {
   settings: Settings;
   vibe: Vibe | null;
@@ -50,6 +51,8 @@ export function SettingsPanel({
   songNudgeMs?: number;
   onNudge?: (deltaMs: number) => void;
   onResetNudge?: () => void;
+  /** Opens the recording view (a full-screen 9:16 frame for TikTok). */
+  onRecord?: () => void;
 }) {
   const desktopApp = !!desktopApi();
   const native = isNativeApp();
@@ -179,6 +182,25 @@ export function SettingsPanel({
         </Section>
 
         {desktopApp && platform === 'win32' && <SoundSection settings={settings} />}
+
+        {onRecord && (
+          <Section title="Record for TikTok">
+            <button className="btn primary wide" onClick={onRecord}>
+              <PortraitIcon width={18} height={18} /> Start the recording view
+            </button>
+            <Toggle
+              checked={settings.recordInfo}
+              onChange={(v) => set({ recordInfo: v })}
+              label="Show the cover and song name at the top"
+            />
+            <p className="hint">
+              {native
+                ? 'The lyrics fill a 9:16 frame on the full screen, with the status bar and every button hidden. Start your phone’s screen recorder, then open this. The Back button leaves it.'
+                : 'The lyrics fill a 9:16 frame in the middle of a full screen, with every button hidden. Record the screen with OBS or any screen recorder, then crop to the frame (its size shows for a few seconds). Press R, Esc or the ✕ to leave.'}{' '}
+              It keeps the screen awake, and the beat effects and lyric styles all work as usual.
+            </p>
+          </Section>
+        )}
 
         <Section title="Lyrics timing">
           <div className="row">
@@ -347,6 +369,9 @@ export function SettingsPanel({
             </li>
             <li>
               <kbd>Y</kbd> next style · <kbd>L</kbd> lyrics only · <kbd>F</kbd> fullscreen
+            </li>
+            <li>
+              <kbd>R</kbd> recording view for TikTok (9:16) · <kbd>Esc</kbd> leaves it
             </li>
           </ul>
         </Section>

@@ -45,6 +45,8 @@ export interface Settings {
   lyricsOnly: boolean;
   /** Desktop app: keep the window above other windows. */
   alwaysOnTop: boolean;
+  /** The recording view (TikTok) shows the song's cover, name and artist at the top of the frame. */
+  recordInfo: boolean;
 }
 
 const KEY = 'ls.settings.v1';
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,
   alwaysOnTop: false,
+  recordInfo: true,
 };
 
 /**

@@ -36,6 +36,11 @@ songs together, the lyrics blend too.
   (Settings → Songs without lyrics).
 - **Follows your PC's real sound (Windows desktop app).** The bars, the flash and the scene can hit the real beat. They
   only react while the song is actually playing, so a video or a ping can't set them off while Spotify is paused.
+- **A recording view for TikTok.** Press <kbd>R</kbd> (or the phone-shaped button at the top, or Settings → Record for
+  TikTok) and the lyrics fill a full-screen **9:16** frame in the middle of the screen, with every button hidden and
+  the cover and song name at the top. Record the screen with OBS or any screen recorder and crop to the frame (its
+  size shows for a few seconds). On the Android app it fills the phone's screen and hides the status bar. All the
+  styles and beat effects work in it.
 - **Works with right-to-left lyrics** such as Arabic and Hebrew.
 - **A demo mode** to try every style without Spotify.
 
@@ -113,6 +118,7 @@ The page walks you through it. Full guide: **[docs/SETUP.md](docs/SETUP.md)**. J
 | <kbd>Y</kbd> | Next lyrics style |
 | <kbd>L</kbd> | Lyrics only (hide the player) |
 | <kbd>F</kbd> | Fullscreen (the buttons fade out until you move the mouse) |
+| <kbd>R</kbd> | Recording view for TikTok: a full-screen 9:16 frame with no buttons (<kbd>Esc</kbd> leaves it) |
 | <kbd>−</kbd> / <kbd>+</kbd> | Spotify volume down / up |
 | <kbd>[</kbd> / <kbd>]</kbd> | Show lyrics 0.1s later / earlier (every song) |
 | <kbd>,</kbd> / <kbd>.</kbd> | Show lyrics 0.5s later / earlier for this song only (<kbd>&lt;</kbd> / <kbd>&gt;</kbd>: 0.1s), e.g. after an Automix |
