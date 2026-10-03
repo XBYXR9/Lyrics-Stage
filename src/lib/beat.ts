@@ -1,9 +1,11 @@
-// The "beat flash": a soft glow and ring that pulse on strong beats, but only
-// during the short pauses between sung lines (long instrumental breaks have
-// their own bars). The pieces here are plain functions so they can be tested.
+// The "beat flash": a soft glow, wash, edge light or kick that pulses on strong
+// beats, but only during the short pauses between sung lines (long instrumental
+// breaks have their own bars) and, for songs without lyrics, on every strong
+// beat. The pieces here are plain functions so they can be tested.
 
 import { findLineIndex, INTERLUDE_MIN_MS } from './lrc';
-import type { LyricLine } from './types';
+import type { BeatStyle } from './settings';
+import type { LyricLine, LyricsKind } from './types';
 
 /** A gap between two sung lines must be at least this long to count as a pause. */
 export const MIN_PAUSE_MS = 250;
@@ -32,6 +34,17 @@ export function shortPauseAt(lines: LyricLine[], t: number): boolean {
   return t >= cur.end && t < next.start && gap >= MIN_PAUSE_MS && gap < INTERLUDE_MIN_MS;
 }
 
+/**
+ * Is the song actually playing, and are we inside its length? Everything that
+ * reacts to the computer's sound is switched on only inside this window, so
+ * other sounds on the computer (a video, a message ping) can't set off the
+ * effects while Spotify is paused, between songs or during an ad.
+ */
+export function inSongWindow(o: { playing: boolean; positionMs: number; durationMs: number }): boolean {
+  if (!o.playing || !Number.isFinite(o.positionMs) || o.positionMs < 0) return false;
+  return !(o.durationMs > 0 && o.positionMs >= o.durationMs);
+}
+
 /** May a flash happen now, given when the last one did? */
 export const canFlash = (nowMs: number, lastFlashAtMs: number) => nowMs - lastFlashAtMs >= MIN_FLASH_GAP_MS;
 
@@ -51,3 +64,48 @@ export function flashShape(ageMs: number, strength: number): { glow: number; rin
     ringScale: 0.35 + p * 1.1,
   };
 }
+
+/** What the beat code should do right now. */
+export interface BeatPlan {
+  /** Listen for beats at all (costs a little work every frame). */
+  detect: boolean;
+  /** Where the chosen flash style may show: only in short pauses between lines, anywhere (a song without lyrics), or never. */
+  flashIn: 'pauses' | 'always' | 'never';
+}
+
+/**
+ * Works out what to do from the settings and what's on screen. Reduce motion
+ * switches everything off. With synced lyrics the flash shows in the short
+ * pauses. With the no-lyrics scene on screen, beats are always listened for (the
+ * scene pulses with them) and the flash shows on every strong beat.
+ */
+export function beatPlan(o: {
+  style: BeatStyle;
+  reduceMotion: boolean;
+  lyricsKind: LyricsKind | null;
+  sceneShown: boolean;
+}): BeatPlan {
+  if (o.reduceMotion) return { detect: false, flashIn: 'never' };
+  if (o.sceneShown) return { detect: true, flashIn: o.style === 'off' ? 'never' : 'always' };
+  if (o.lyricsKind === 'synced' && o.style !== 'off') return { detect: true, flashIn: 'pauses' };
+  return { detect: false, flashIn: 'never' };
+}
+
+// Strong beats are announced here, so the flash and the no-lyrics scene react to the same ones.
+type BeatListener = (strength: number) => void;
+const listeners = new Set<BeatListener>();
+
+/** Calls `listener` with the strength (0..1) of every strong beat. Returns a function that stops listening. */
+export function onBeat(listener: BeatListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function emitBeat(strength: number) {
+  listeners.forEach((l) => l(strength));
+}
+
+/** Settings asks for a sample flash of the chosen style (when you change it). */
+export const BEAT_PREVIEW_EVENT = 'ls:beat-preview';

@@ -193,17 +193,41 @@ During a break (an *interlude* line), every style shows the same visual (`src/co
 the cover's colors, plus a thin progress line, or the three dots if you prefer (Settings). The bars follow a rhythm
 estimated from the song's energy (`src/lib/pulse.ts`: low bars thump on every beat, middle bars snap on beats 2 and 4,
 high bars flick on the off-beats). It's worked out from the playback position, so seeking can't desync it. In the
-Windows desktop app, "Follow the real sound" instead feeds the bars from a Web Audio analyser on the system sound
+Windows desktop app, "Follow your PC's sound" instead feeds the bars from a Web Audio analyser on the system sound
 (`src/lib/audioLevels.ts`).
 
 ### Beat flash
 
-In a *short pause* (after one sung line, before the next, a gap of at least 250 ms and under the 4.5 s that makes an
-interlude), `BeatFlash` (`src/components/BeatFlash.tsx`) pulses a tinted glow and a ring behind the lyrics on strong
-beats. The rules are in `src/lib/beat.ts`: flashes are at least 340 ms apart (never more than three a second, the
-accessibility limit for flashing content), the glow never goes above 40% opacity, and Reduce motion turns it off. The
-beats come from the real sound when "Follow the real sound" is on (`detectBeat` in `src/lib/audioLevels.ts`: bass
-jumping well above its recent average), otherwise from the estimated rhythm (`estimatedBeat` in `src/lib/pulse.ts`).
+Strong beats are found in one place, `useBeatFlash` (`src/hooks/beatHooks.ts`), once per frame for the whole screen. The
+rules are in `src/lib/beat.ts` (`beatPlan`): with synced lyrics a flash may only happen in a *short pause* (after one
+sung line, before the next, a gap of at least 250 ms and under the 4.5 s that makes an interlude); with the no-lyrics
+scene on screen it happens on every strong beat. The look is picked in Settings (`BeatStyle`): the hook writes `--bf`,
+`--bf-ring` and `--bf-rs` on the `.beat-fx` layer and CSS (`src/styles/lyrics.css`) shows the glow and ring, a
+full-screen wash or lit edges; "kick" scales the lyrics area instead. Flashes are at least 340 ms apart (never more
+than three a second, the accessibility limit for flashing content), the glow never goes above 40% opacity, the wash
+about 26%, and Reduce motion turns it all off. Every beat is also announced on a small bus (`onBeat`) so the scene can
+punch with it.
+
+The beats come from the real sound when it's on (`detectBeat` in `src/lib/audioLevels.ts`: bass jumping well above its
+recent average), otherwise from the estimated rhythm (`estimatedBeat` in `src/lib/pulse.ts`).
+
+### The playback window
+
+The computer's sound is only used inside the song's *playback window* (`inSongWindow` in `src/lib/beat.ts`): the clock
+is running, the position is inside the song, and it isn't an ad. The main screen sets the window every frame
+(`setPlaybackWindow`); `LevelReader` (`src/lib/audioLevels.ts`) refuses to look at the sound while it's closed, throws
+away anything it was holding when it closes (so a late beat can't fire), and starts its beat detector from scratch
+when it opens (with a few warm-up looks so the bars rising from nothing aren't taken for a beat). This is what stops a
+video or a notification ping on the computer from flashing the screen while Spotify is paused. A delay line holds
+what was heard for up to 500 ms for Bluetooth headphones.
+
+### Songs without lyrics
+
+When the lyrics are `none` or `instrumental` (and Reduce motion is off, and the user didn't pick "Just a message"),
+`LyricsLayer` shows `BeatScene` (`src/components/BeatScene.tsx`) instead of a message: a canvas in the cover's colors,
+either an orb with 48 bars around it or a mirrored equalizer. It reads the same bar heights as the break visualizer
+(real sound or estimate) and listens to the beat bus: each beat adds a ripple and a punch (`src/lib/scene.ts`), and
+beats of strength 0.7 or more are "big": a harder punch and a shockwave that reaches much further.
 
 ### Lyrics only
 

@@ -19,6 +19,7 @@ function fakeApi() {
     },
     openSpotify: vi.fn(async () => {}),
     setAlwaysOnTop: async () => {},
+    setSoundSource: async () => {},
     onUpdate: () => () => {},
     installUpdate: async () => {},
     signInWithSpotify: async () => ({ error: 'cancelled' }),

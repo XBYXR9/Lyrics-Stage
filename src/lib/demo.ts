@@ -166,6 +166,27 @@ function makeSongs(): DemoSong[] {
     ctx.fillText('ST4T1C', s / 2, s * 0.62);
   });
 
+  const loop = cover((ctx, s) => {
+    const g = ctx.createLinearGradient(0, 0, s, s);
+    g.addColorStop(0, '#04281f');
+    g.addColorStop(1, '#0b6b5c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+    ctx.strokeStyle = '#7dffd9';
+    ctx.lineWidth = 8;
+    for (let i = 1; i < 6; i++) {
+      ctx.globalAlpha = 1 - i * 0.15;
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, i * 62, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#e8fff8';
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, 38, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
   const make = (key: string, name: string, artist: string, album: string, art: string, lyrics: Lyrics, durationMs: number): TrackInfo => ({
     key: `demo:${key}`,
     id: null,
@@ -190,6 +211,10 @@ function makeSongs(): DemoSong[] {
       track: make('street', 'Sidewalk Static', 'MC Placeholder', 'Loop City', street, sidewalkLyrics(), 52000),
       automixAtMs: 46000,
       nextStartMs: 1500,
+    },
+    // No words at all: shows the beat scene.
+    {
+      track: make('loop', 'Midnight Loop', 'Synthetic Sleep', 'Instrumentals', loop, { kind: 'instrumental', lines: [], wordSynced: false, source: 'demo' }, 64000),
     },
   ];
 }

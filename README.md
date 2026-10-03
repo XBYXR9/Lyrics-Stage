@@ -26,9 +26,15 @@ songs together, the lyrics blend too.
   merge into one.
 - **A visualizer in the instrumental breaks.** Instead of three dots, moving bars in the album's colors keep the beat
   while the singing pauses, with a thin line showing when the lyrics come back. (Prefer dots? Settings → Instrumental
-  breaks.) On Windows the bars can follow the real sound.
-- **A beat flash in the split-second pauses.** Between lines, a soft glow and ring pulse on strong beats, at most three
-  times a second (Settings → Instrumental breaks turns it off, and so does Reduce motion).
+  breaks.)
+- **A beat flash you can choose.** On strong beats in the split-second pauses between lines, pick how it looks in
+  Settings → Beat flash: a soft **glow**, a **full-screen** color wash, lit **edges**, a little **kick** of the lyrics,
+  or off. At most three flashes a second, soft and tinted (never white), and off with Reduce motion.
+- **A scene for songs without lyrics.** Instrumentals and songs LRCLIB doesn't have show an orb or a mirrored
+  equalizer in the album's colors that punches on every beat; big beats send a shockwave across the screen
+  (Settings → Songs without lyrics).
+- **Follows your PC's real sound (Windows desktop app).** The bars, the flash and the scene can hit the real beat. They
+  only react while the song is actually playing, so a video or a ping can't set them off while Spotify is paused.
 - **Works with right-to-left lyrics** such as Arabic and Hebrew.
 - **A demo mode** to try every style without Spotify.
 

@@ -3,11 +3,11 @@
 // Opens the lyrics window and links it to the Spotify app on this computer
 // (see bridge/). You stay logged in to Spotify the normal way; no Spotify
 // developer account is needed, and Spotify's own Automix/Crossfade apply.
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
 import { validateCommand, type DesktopSnapshot } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
-import { mayHearSound } from './soundAccess';
+import { mayHearSound, parseSoundSource, type SoundVideoSource } from './soundAccess';
 import { cancelSpotifyLogin, signInWithSpotify } from './spotifyLogin';
 import { startUpdates } from './updater';
 
@@ -89,6 +89,12 @@ ipcMain.handle('ls:spotify-login', async (_event, authUrl: unknown) => {
 
 ipcMain.handle('ls:spotify-login-cancel', () => cancelSpotifyLogin());
 
+// What goes along with the shared sound (see soundAccess.ts). The page asks for "screen" only if the first try fails.
+let soundVideoSource: SoundVideoSource = 'frame';
+ipcMain.handle('ls:sound-source', (_event, kind: unknown) => {
+  soundVideoSource = parseSoundSource(kind);
+});
+
 ipcMain.handle('ls:always-on-top', (_event, on: unknown) => {
   win?.setAlwaysOnTop(on === true, 'floating');
 });
@@ -99,8 +105,19 @@ app.whenReady().then(() => {
   // "video" is just the app's own page, so the screen is never captured).
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     const frame = request.frame;
-    if (frame && mayHearSound(process.platform, frame.url, isAppUrl)) callback({ video: frame, audio: 'loopback' });
-    else callback({});
+    if (!frame || !mayHearSound(process.platform, frame.url, isAppUrl)) {
+      callback({});
+      return;
+    }
+    if (soundVideoSource !== 'screen') {
+      callback({ video: frame, audio: 'loopback' });
+      return;
+    }
+    // The second way: share the sound along with a screen source (its picture is dropped by the page at once).
+    desktopCapturer
+      .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+      .then((sources) => callback(sources[0] ? { video: sources[0], audio: 'loopback' } : { video: frame, audio: 'loopback' }))
+      .catch(() => callback({ video: frame, audio: 'loopback' }));
   });
   createWindow();
   startUpdates(() => win);

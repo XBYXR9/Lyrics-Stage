@@ -6,34 +6,109 @@
   position: absolute;
   inset: 0;
 }
-/* Beat flash (opacity and size set every frame from JS): a tinted glow and a ring, behind the lyrics */
-.beat-flash,
-.beat-ring {
+/* Beat flash: one of several looks, picked in Settings (data-style). The main screen sets
+   --bf (glow), --bf-ring and --bf-rs (ring size) every frame while a flash plays. All are
+   tinted with the album colors and softly capped, never white, never above three a second. */
+.beat-fx {
   position: absolute;
+  inset: 0;
+  z-index: 4; /* above the background, behind the lyrics (.stage-main is 5) */
   pointer-events: none;
+  overflow: hidden;
+  --bf: 0;
+  --bf-ring: 0;
+  --bf-rs: 0.35;
+}
+.beat-fx > * {
+  position: absolute;
+  display: none;
   opacity: 0;
 }
-.beat-flash {
-  inset: -8%;
+.beat-fx[data-style='glow'] .bf-glow,
+.beat-fx[data-style='glow'] .bf-ring,
+.beat-fx[data-style='screen'] .bf-screen,
+.beat-fx[data-style='edges'] .bf-edges {
+  display: block;
+}
+.bf-glow {
+  inset: 0;
+  opacity: var(--bf);
   mix-blend-mode: screen;
   background: radial-gradient(
-    ellipse 62% 56% at 50% 50%,
+    ellipse 56vw 54vh at var(--bf-x, 50%) var(--bf-y, 50%),
     color-mix(in srgb, var(--accent, #fff) 85%, white) 0%,
     color-mix(in srgb, var(--accent, #fff) 40%, transparent) 38%,
     transparent 72%
   );
 }
-.beat-ring {
-  left: 50%;
-  top: 50%;
-  width: min(72%, 72vh);
+.bf-ring {
+  left: var(--bf-x, 50%);
+  top: var(--bf-y, 50%);
+  width: min(72vh, 60vw);
   aspect-ratio: 1;
   border-radius: 50%;
   border: 2px solid var(--accent, #fff);
+  opacity: var(--bf-ring);
   box-shadow:
     0 0 28px color-mix(in srgb, var(--accent, #fff) 70%, transparent),
     inset 0 0 28px color-mix(in srgb, var(--accent, #fff) 45%, transparent);
-  transform: translate(-50%, -50%) scale(0.35);
+  transform: translate(-50%, -50%) scale(var(--bf-rs));
+}
+/* The whole screen washes over in the album colors (at most about a quarter strong). */
+.bf-screen {
+  inset: 0;
+  opacity: calc(var(--bf) * 0.65);
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    ellipse 90% 85% at 50% 50%,
+    color-mix(in srgb, var(--accent, #fff) 80%, transparent),
+    color-mix(in srgb, var(--accent2, #fff) 90%, transparent)
+  );
+}
+/* The edges of the screen light up. */
+.bf-edges {
+  inset: 0;
+  opacity: calc(var(--bf) * 2.2);
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    ellipse 80% 75% at 50% 50%,
+    transparent 52%,
+    color-mix(in srgb, var(--accent, #fff) 60%, transparent) 100%
+  );
+  box-shadow: inset 0 0 110px 16px color-mix(in srgb, var(--accent2, #fff) 70%, transparent);
+}
+
+/* ---------- Songs without lyrics: the beat scene ---------- */
+.beat-scene {
+  position: absolute;
+  inset: 0;
+  animation: fade-up 0.6s ease;
+}
+.beat-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.beat-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7%;
+  padding: 0 24px;
+  text-align: center;
+}
+.beat-caption-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.beat-caption-sub {
+  max-width: 440px;
+  margin: 4px auto 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
 }
 .lyrics-layer.phase-in {
   animation: layer-in var(--in-ms) cubic-bezier(0.2, 0.7, 0.2, 1) var(--in-delay) both;

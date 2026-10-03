@@ -1,17 +1,31 @@
-// Real-sound bars for the break visualizer (Windows desktop app, opt-in).
+// Real-sound bars and beats (Windows desktop app, opt-in).
 //
 // The desktop app asks Windows for a copy of the sound going to the speakers
-// ("loopback"; see electron/main.ts) and this file turns it into bar heights
-// with a Web Audio analyser. The sound stays inside the app: it's analysed and
-// thrown away, never recorded, saved or sent anywhere. Everything playing on
-// the computer is heard, not just Spotify. Anywhere this isn't available, the
-// bars fall back to the estimated rhythm in pulse.ts.
+// ("loopback"; see electron/main.ts) and this file turns it into bar heights and
+// beats with a Web Audio analyser. The sound stays inside the app: it's analysed
+// and thrown away, never recorded, saved or sent anywhere.
+//
+// The app hears everything the computer plays, not just Spotify (Windows can't
+// hand over one app's sound to an app like this). So the sound is only used
+// inside the song's playback window: while Spotify is playing and the position
+// is inside the song (see setPlaybackWindow). Paused, between songs, during an
+// ad: it's ignored completely, and a video or a message ping can't set anything
+// off. Anywhere this isn't available, the effects fall back to the estimated
+// rhythm in pulse.ts.
+import { desktopApi } from './desktopTypes';
 import { BAR_COUNT } from './pulse';
+import { mean } from './scene';
 
 const LOW_HZ = 45;
 const HIGH_HZ = 12000;
 /** The bars stay put for this long after the sound goes quiet, then the estimate takes over. */
 const SILENCE_MS = 1500;
+/** Don't look at the sound more often than this (several callers share one look per frame). */
+const READ_EVERY_MS = 8;
+/** After the window opens, the first few looks only warm the bars up (they rise from nothing), so that rise isn't taken for a beat. */
+const WARM_UP_READS = 4;
+/** The longest delay that can be asked for (for Bluetooth headphones). */
+export const MAX_SOUND_DELAY_MS = 500;
 
 /**
  * Turns an FFT spectrum (0..255 per frequency bin, as the analyser gives it)
@@ -81,42 +95,257 @@ export function detectBeat(bass: number, state: BeatState, nowMs: number): numbe
   return Math.min(1, 0.35 + (bass - threshold) * 2.2);
 }
 
+/**
+ * Holds what was heard for a moment before it's used. For Bluetooth headphones,
+ * which play the sound a fraction of a second after the computer sends it: the
+ * effects should land when the beat reaches the ears, not when it left the PC.
+ */
+export class DelayLine {
+  private items: { at: number; bars: Float32Array; beat: number }[] = [];
+
+  push(at: number, bars: ArrayLike<number>, beat: number) {
+    this.items.push({ at, bars: Float32Array.from(bars), beat });
+    if (this.items.length > 256) this.items.shift();
+  }
+
+  /**
+   * Takes out everything heard at or before `until`. Copies the newest of those
+   * bar heights into `out` and returns it with the strongest beat among them,
+   * or null when nothing is old enough yet.
+   */
+  release(until: number, out: Float32Array): { beat: number } | null {
+    let found = false;
+    let beat = 0;
+    while (this.items.length && this.items[0].at <= until) {
+      const item = this.items.shift()!;
+      out.set(item.bars.subarray(0, out.length));
+      beat = Math.max(beat, item.beat);
+      found = true;
+    }
+    return found ? { beat } : null;
+  }
+
+  clear() {
+    this.items.length = 0;
+  }
+
+  get size() {
+    return this.items.length;
+  }
+}
+
+/**
+ * Reads bars and beats out of a stream of spectrum snapshots. It holds all the
+ * rules (the playback window, the delay, the silence fallback) apart from the
+ * browser's audio objects, so they can be tested with a made-up spectrum.
+ */
+export class LevelReader {
+  private readonly bars = new Float32Array(BAR_COUNT);
+  private readonly shown = new Float32Array(BAR_COUNT);
+  private readonly state = { smooth: new Float32Array(BAR_COUNT), peak: 0 };
+  private readonly line = new DelayLine();
+  private readonly meterBuf: Uint8Array<ArrayBuffer>;
+  private beatState = newBeatState();
+  private spectrum: Uint8Array<ArrayBuffer>;
+  private lastReadAt = -Infinity;
+  private lastSoundAt = 0;
+  private heard = false;
+  private pendingBeat = 0;
+  private open = false;
+  private warm = 0;
+  private delayMs = 0;
+
+  constructor(
+    /** Fills the buffer with the current spectrum (0..255 per bin). */
+    private readonly fill: (into: Uint8Array<ArrayBuffer>) => void,
+    private readonly sampleRate: number,
+    bins: number,
+    startedAt = 0,
+  ) {
+    this.spectrum = new Uint8Array(bins);
+    this.meterBuf = new Uint8Array(bins);
+    this.lastSoundAt = startedAt;
+  }
+
+  /**
+   * Opens or closes the window in which the sound counts. Closing throws away
+   * everything held, so a beat from before can't fire later; opening starts the
+   * beat detector from scratch.
+   */
+  setWindow(open: boolean) {
+    if (open === this.open) return;
+    this.open = open;
+    this.line.clear();
+    this.pendingBeat = 0;
+    this.heard = false;
+    this.state.smooth.fill(0);
+    this.state.peak = 0;
+    this.beatState = newBeatState();
+    this.warm = open ? WARM_UP_READS : 0;
+  }
+
+  get windowOpen() {
+    return this.open;
+  }
+
+  setDelay(ms: number) {
+    const next = Math.min(MAX_SOUND_DELAY_MS, Math.max(0, Number.isFinite(ms) ? ms : 0));
+    if (next === this.delayMs) return;
+    this.delayMs = next;
+    this.line.clear();
+  }
+
+  /** The strength (0..1) of a strong beat since the last call, or 0. */
+  takeBeat(): number {
+    const b = this.pendingBeat;
+    this.pendingBeat = 0;
+    return b;
+  }
+
+  /**
+   * Copies the bar heights into `out`. False means "use the estimate": the
+   * window is closed, or nothing has been heard for a while.
+   */
+  read(now: number, out: Float32Array): boolean {
+    if (!this.open) return false;
+    if (now - this.lastReadAt > READ_EVERY_MS) {
+      this.lastReadAt = now;
+      this.fill(this.spectrum);
+      const loud = barsFromSpectrum(this.spectrum, this.sampleRate, this.bars, this.state);
+      let beat = 0;
+      if (loud) {
+        this.lastSoundAt = now;
+        if (this.warm > 0) this.warm--;
+        else beat = detectBeat(mean(this.bars, 0, 6), this.beatState, now);
+      }
+      this.heard = now - this.lastSoundAt < SILENCE_MS;
+      if (this.delayMs > 0) this.line.push(now, this.bars, beat);
+      else {
+        this.shown.set(this.bars);
+        if (beat > 0) this.pendingBeat = Math.max(this.pendingBeat, beat);
+      }
+    }
+    if (this.delayMs > 0) {
+      const got = this.line.release(now - this.delayMs, this.shown);
+      if (got && got.beat > 0) this.pendingBeat = Math.max(this.pendingBeat, got.beat);
+    }
+    if (!this.heard) return false;
+    out.set(this.shown.subarray(0, out.length));
+    return true;
+  }
+
+  /** How loud the sound is right now (0..1), whether or not the window is open. For the level meter in Settings. */
+  loudness(): number {
+    this.fill(this.meterBuf);
+    const top = Math.max(1, Math.floor(this.meterBuf.length / 4));
+    let sum = 0;
+    for (let i = 1; i < top; i++) sum += this.meterBuf[i];
+    return Math.min(1, (sum / top / 255) * 2.2);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Starting and stopping the listening (browser side)
+
+/** Where the listening stands, in words the settings can show. */
+export type AudioState = 'off' | 'waiting' | 'starting' | 'listening' | 'failed';
+export interface AudioStatus {
+  state: AudioState;
+  /** Plain words: why it isn't listening. */
+  reason: string | null;
+}
+
+let status: AudioStatus = { state: 'off', reason: null };
+const statusListeners = new Set<() => void>();
+
+export const getAudioStatus = () => status;
+export function subscribeAudioStatus(l: () => void) {
+  statusListeners.add(l);
+  return () => {
+    statusListeners.delete(l);
+  };
+}
+export function setAudioStatus(state: AudioState, reason: string | null = null) {
+  if (status.state === state && status.reason === reason) return;
+  status = { state, reason };
+  statusListeners.forEach((l) => l());
+}
+
+/** The error name used when the system shared a stream without any sound in it. */
+const NO_SOUND_TRACK = 'NoSoundTrack';
+
+/** What went wrong while starting, in plain words. */
+export function describeAudioError(err: unknown): string {
+  const name = err instanceof Error ? err.name : typeof err === 'string' ? err : '';
+  switch (name) {
+    case 'NotAllowedError':
+      return 'The app wasn’t allowed to share the sound yet. Click anywhere in the app and it tries again.';
+    case 'NotFoundError':
+      return 'No sound output was found on this computer.';
+    case 'NotSupportedError':
+      return 'This version of the app can’t listen to the computer’s sound.';
+    case NO_SOUND_TRACK:
+      return 'Windows shared the screen but no sound with it.';
+    default:
+      return 'Couldn’t start listening to the sound.';
+  }
+}
+
 let context: AudioContext | null = null;
-let analyser: AnalyserNode | null = null;
 let stream: MediaStream | null = null;
-let spectrum: Uint8Array<ArrayBuffer> | null = null;
+let reader: LevelReader | null = null;
 let starting: Promise<boolean> | null = null;
-let lastSoundAt = 0;
-let lastReadAt = -Infinity;
-let lastHeard = false;
-const state = { smooth: new Float32Array(BAR_COUNT), peak: 0 };
-const cache = new Float32Array(BAR_COUNT);
-let beatState = newBeatState();
-let pendingBeat = 0;
+let wantedDelayMs = 0;
+let wantedWindow = false;
 
 /** Is the app listening to the sound right now? */
 export function audioLive(): boolean {
-  return !!analyser;
+  return !!reader;
+}
+
+async function capture(): Promise<MediaStream> {
+  // The desktop app answers this request itself with the system sound (electron/main.ts).
+  const media = await navigator.mediaDevices.getDisplayMedia({
+    video: true,
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+  });
+  media.getVideoTracks().forEach((t) => t.stop()); // only the sound is wanted
+  if (!media.getAudioTracks().length) {
+    media.getTracks().forEach((t) => t.stop());
+    const err = new Error('no sound in the shared stream');
+    err.name = NO_SOUND_TRACK;
+    throw err;
+  }
+  return media;
 }
 
 /**
  * Starts listening to the computer's sound. Resolves true once it's running,
- * false if it couldn't start (not allowed yet, no audio, not supported).
+ * false if it couldn't start (not allowed yet, no audio, not supported). If the
+ * first way fails, the desktop app is asked to share the sound along with a
+ * screen source instead, which some Windows setups need. The reason for a
+ * failure is kept in getAudioStatus().
  */
 export function startAudioLevels(): Promise<boolean> {
-  if (analyser) return Promise.resolve(true);
+  if (reader) return Promise.resolve(true);
   starting ??= (async () => {
-    try {
-      // The desktop app answers this request itself with the system sound (electron/main.ts).
-      const media = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      });
-      media.getVideoTracks().forEach((t) => t.stop()); // only the sound is wanted
-      if (!media.getAudioTracks().length) {
-        media.getTracks().forEach((t) => t.stop());
-        return false;
+    setAudioStatus('starting');
+    let media: MediaStream | null = null;
+    let failure: unknown = null;
+    for (const source of ['frame', 'screen'] as const) {
+      try {
+        await desktopApi()?.setSoundSource(source);
+        media = await capture();
+        break;
+      } catch (err) {
+        failure = err;
       }
+    }
+    if (!media) {
+      setAudioStatus('failed', describeAudioError(failure));
+      return false;
+    }
+    try {
       const ctx = new AudioContext();
       void ctx.resume().catch(() => {});
       const node = ctx.createAnalyser();
@@ -125,17 +354,20 @@ export function startAudioLevels(): Promise<boolean> {
       ctx.createMediaStreamSource(media).connect(node); // not connected to the speakers: no echo
       stream = media;
       context = ctx;
-      analyser = node;
-      spectrum = new Uint8Array(node.frequencyBinCount);
-      lastSoundAt = performance.now();
+      reader = new LevelReader((into) => node.getByteFrequencyData(into), ctx.sampleRate, node.frequencyBinCount, performance.now());
+      reader.setDelay(wantedDelayMs);
+      reader.setWindow(wantedWindow);
       media.getAudioTracks()[0].addEventListener('ended', stopAudioLevels);
+      setAudioStatus('listening');
       return true;
-    } catch {
+    } catch (err) {
+      media.getTracks().forEach((t) => t.stop());
+      setAudioStatus('failed', describeAudioError(err));
       return false;
-    } finally {
-      starting = null;
     }
-  })();
+  })().finally(() => {
+    starting = null;
+  });
   return starting;
 }
 
@@ -144,44 +376,44 @@ export function stopAudioLevels() {
   void context?.close().catch(() => {});
   stream = null;
   context = null;
-  analyser = null;
-  spectrum = null;
-  state.smooth.fill(0);
-  state.peak = 0;
-  lastHeard = false;
-  beatState = newBeatState();
-  pendingBeat = 0;
+  reader = null;
+  if (status.state === 'listening' || status.state === 'starting') setAudioStatus('off');
+}
+
+/**
+ * Says whether the song is playing and the position is inside it. The sound only
+ * counts while this is true (see the top of this file). Call it every frame.
+ */
+export function setPlaybackWindow(open: boolean) {
+  wantedWindow = open;
+  reader?.setWindow(open);
+}
+
+/** Delays what's heard by this many ms (0..500), to line the effects up with Bluetooth headphones. */
+export function setSoundDelay(ms: number) {
+  wantedDelayMs = ms;
+  reader?.setDelay(ms);
 }
 
 /** The strength (0..1) of a strong beat heard since the last call, or 0. Call it every frame while listening. */
 export function takeBeat(): number {
-  const b = pendingBeat;
-  pendingBeat = 0;
-  return b;
+  return reader?.takeBeat() ?? 0;
 }
 
 /**
  * Copies the current bar heights into `out`. Returns false when the real sound
- * isn't available or has been silent for a while, so the caller uses the
- * estimated rhythm instead. Cheap to call from several places in one frame.
+ * isn't available, isn't counted right now (outside the song's playback
+ * window), or has been silent for a while, so the caller uses the estimated
+ * rhythm instead. Cheap to call from several places in one frame.
  */
 export function readAudioLevels(out: Float32Array): boolean {
-  if (!analyser || !spectrum || !context) return false;
-  const now = performance.now();
-  if (now - lastReadAt > 8) {
-    lastReadAt = now;
-    analyser.getByteFrequencyData(spectrum);
-    const heard = barsFromSpectrum(spectrum, context.sampleRate, cache, state);
-    if (heard) {
-      lastSoundAt = now;
-      let bass = 0;
-      for (let i = 0; i < 6; i++) bass += cache[i];
-      const beat = detectBeat(bass / 6, beatState, now);
-      if (beat > 0) pendingBeat = Math.max(pendingBeat, beat);
-    }
-    lastHeard = now - lastSoundAt < SILENCE_MS;
-  }
-  if (!lastHeard) return false;
-  out.set(cache.subarray(0, out.length));
-  return true;
+  return reader ? reader.read(performance.now(), out) : false;
+}
+
+/** Is the sound counting right now (listening, and the song is playing)? For the status in Settings. */
+export const audioCounting = () => !!reader && wantedWindow;
+
+/** How loud the computer's sound is right now (0..1), for the meter in Settings. 0 when not listening. */
+export function peekAudioLoudness(): number {
+  return reader ? reader.loudness() : 0;
 }

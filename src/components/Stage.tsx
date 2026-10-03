@@ -1,11 +1,12 @@
 // The main screen: background, player panel, lyrics, top bar and panels.
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useBeatFlash, useRealSound } from '../hooks/beatHooks';
 import { useEngineState, useLyrics, usePalette, usePresence } from '../hooks/hooks';
 import { startLogin } from '../lib/auth';
-import { startAudioLevels, stopAudioLevels } from '../lib/audioLevels';
 import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
+import { showsScene } from '../lib/scene';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
 import { friendlyError } from '../lib/spotify';
@@ -28,41 +29,6 @@ const run = (p: Promise<unknown>) => p.catch((e) => toast(friendlyError(e), 'err
 function toggleFullscreen() {
   if (document.fullscreenElement) void document.exitFullscreen();
   else void document.documentElement.requestFullscreen?.().catch(() => {});
-}
-
-/**
- * Windows desktop app, when "Follow the real sound" is on: listens to the
- * computer's sound for the break visualizer (see audioLevels.ts). Chromium wants
- * a click or key press before it shares sound, so if the first try is refused,
- * it tries again on the next one. Without it the bars use the estimated rhythm.
- */
-function useRealSound(on: boolean) {
-  useEffect(() => {
-    if (!on || desktopApi()?.platform !== 'win32') return;
-    let alive = true;
-    let tries = 0;
-    const events = ['pointerdown', 'keydown'] as const;
-    const stopWaiting = () => events.forEach((e) => window.removeEventListener(e, retry));
-    const attempt = async () => {
-      tries++;
-      if (await startAudioLevels()) {
-        stopWaiting();
-        return;
-      }
-      // Not allowed yet: wait for the next click or key press (a few times, then give up quietly).
-      if (alive && tries < 4) events.forEach((e) => window.addEventListener(e, retry, { once: true }));
-    };
-    const retry = () => {
-      stopWaiting();
-      if (alive) void attempt();
-    };
-    void attempt();
-    return () => {
-      alive = false;
-      stopWaiting();
-      stopAudioLevels();
-    };
-  }, [on]);
 }
 
 /** Desktop app: where its own update stands (null in the browser). */
@@ -145,7 +111,6 @@ export function Stage({
   const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
   const hideControls = useHideControlsInFullscreen(panel !== null);
-  useRealSound(settings.reactToSound && settings.breakVisual === 'bars');
 
   // Switching "lyrics only" on slides the cover and player away; switching it off brings them back.
   const presence = usePresence(!settings.lyricsOnly, settings.reduceMotion ? 0 : PANEL_EXIT_MS);
@@ -161,6 +126,29 @@ export function Stage({
   const { palette, ready } = usePalette(track?.artUrl);
   const { lyrics } = useLyrics(track);
   const vibe = useMemo(() => (track ? analyzeVibe(lyrics, palette) : null), [track, lyrics, palette]);
+
+  // Beat effects. Everything that reacts to the sound or to the beat only counts inside the song's playback window.
+  const fxRef = useRef<HTMLDivElement>(null);
+  const kickRef = useRef<HTMLDivElement>(null);
+  const song = { clock: engine.clock, durationMs: track?.durationMs ?? 0, active: !!track && state.status !== 'ad' };
+  const sceneShown = song.active && showsScene(lyrics?.kind ?? null, settings.noLyricsVisual, settings.reduceMotion);
+  const usesBeats = !settings.reduceMotion && (settings.beatStyle !== 'off' || settings.breakVisual === 'bars' || settings.noLyricsVisual !== 'message');
+  const canHearPc = desktopApi()?.platform === 'win32';
+  useRealSound(canHearPc && settings.soundSync === 'on' && usesBeats, song, settings.soundDelayMs);
+  useBeatFlash(
+    { fx: fxRef, kick: kickRef },
+    {
+      style: settings.beatStyle,
+      reduceMotion: settings.reduceMotion,
+      lyrics,
+      sceneShown,
+      song,
+      offsetMs: settings.offsetMs,
+      energy: vibe?.energy ?? 0.5,
+    },
+  );
+  // Windows desktop app: ask once whether the effects may follow the computer's sound.
+  const askSound = canHearPc && settings.soundSync === 'ask' && usesBeats && song.active;
 
   // The background switches only once the new cover's colors are ready.
   const [scene, setScene] = useState<{ url: string | null; palette: Palette }>({ url: null, palette: FALLBACK_PALETTE });
@@ -378,7 +366,27 @@ export function Stage({
         )}
       </div>
 
+      {/* behind the lyrics: the beat flash (its look is picked in Settings; the variables are set every frame) */}
+      <div className="beat-fx" data-style={settings.beatStyle} ref={fxRef} aria-hidden>
+        <div className="bf-glow" />
+        <div className="bf-ring" />
+        <div className="bf-screen" />
+        <div className="bf-edges" />
+      </div>
+
       <header className="topbar">
+        {askSound && (
+          <span
+            className="pill ask-pill"
+            role="group"
+            aria-label="Follow the computer's sound?"
+            title="The sound is only used while a song plays, analysed inside the app and never recorded or sent anywhere. You can change this in Settings."
+          >
+            <span>Make the effects follow your PC’s sound?</span>
+            <button onClick={() => updateSettings({ soundSync: 'on' })}>Yes</button>
+            <button onClick={() => updateSettings({ soundSync: 'off' })}>No thanks</button>
+          </span>
+        )}
         {engine.isDemo && <span className="pill hide-mobile">Demo · no sound</span>}
         {state.problem && !state.authExpired && <span className="pill warn">{state.problem}</span>}
         {desktop && track && state.spotifyApp && !state.spotifyApp.running && (
@@ -440,7 +448,9 @@ export function Stage({
             <NowPlaying engine={engine} state={state} />
           </div>
         )}
-        <div className="stage-lyrics">{content}</div>
+        <div className="stage-lyrics" ref={kickRef}>
+          {content}
+        </div>
       </main>
 
       {panel === 'search' && <SearchPanel engine={engine} onClose={() => setPanel(null)} />}

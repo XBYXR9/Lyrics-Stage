@@ -220,6 +220,28 @@ kbd {
   max-width: 50vw;
 }
 
+.pill.ask-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  white-space: normal;
+}
+.ask-pill button {
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #111;
+  background: var(--accent, #fff);
+}
+.ask-pill button:last-child {
+  color: inherit;
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .hint {
   font-size: 13px;
   line-height: 1.5;
@@ -989,6 +1011,95 @@ kbd {
   font-family: var(--font-poster);
   transform: rotate(-6deg);
   color: var(--accent);
+}
+
+/* Beat flash picker: each card has a tiny picture of its look */
+.bf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.bf-mini {
+  grid-area: preview;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+}
+.bf-glow-card .bf-mini::before,
+.bf-glow-card .bf-mini::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+}
+.bf-glow-card .bf-mini::before {
+  inset: 4px;
+  background: radial-gradient(circle, var(--accent), transparent 70%);
+}
+.bf-glow-card .bf-mini::after {
+  inset: 9px;
+  border: 1.5px solid var(--accent);
+}
+.bf-screen-card .bf-mini {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+}
+.bf-edges-card .bf-mini {
+  box-shadow: inset 0 0 12px 3px var(--accent);
+}
+.bf-kick-card .bf-mini::before {
+  content: 'Aa';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 20px;
+  transform: scale(1.18);
+}
+.bf-off-card .bf-mini::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 21px;
+  height: 2px;
+  background: var(--text-dim);
+  transform: rotate(-35deg);
+}
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 8px;
+}
+.meter {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transform-origin: left;
+  transform: scaleX(0);
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+.meter-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.hint + .row {
+  margin-top: 10px;
+}
+.hint.warn-text {
+  color: #ffb25c;
 }
 
 .segmented {
