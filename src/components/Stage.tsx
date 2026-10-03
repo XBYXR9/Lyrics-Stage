@@ -1,7 +1,8 @@
 // The main screen: background, player panel, lyrics, top bar and panels.
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { useEngineState, useLyrics, usePalette } from '../hooks/hooks';
+import { useEngineState, useLyrics, usePalette, usePresence } from '../hooks/hooks';
 import { startLogin } from '../lib/auth';
+import { startAudioLevels, stopAudioLevels } from '../lib/audioLevels';
 import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
@@ -29,12 +30,50 @@ function toggleFullscreen() {
   else void document.documentElement.requestFullscreen?.().catch(() => {});
 }
 
+/**
+ * Windows desktop app, when "Follow the real sound" is on: listens to the
+ * computer's sound for the break visualizer (see audioLevels.ts). Chromium wants
+ * a click or key press before it shares sound, so if the first try is refused,
+ * it tries again on the next one. Without it the bars use the estimated rhythm.
+ */
+function useRealSound(on: boolean) {
+  useEffect(() => {
+    if (!on || desktopApi()?.platform !== 'win32') return;
+    let alive = true;
+    let tries = 0;
+    const events = ['pointerdown', 'keydown'] as const;
+    const stopWaiting = () => events.forEach((e) => window.removeEventListener(e, retry));
+    const attempt = async () => {
+      tries++;
+      if (await startAudioLevels()) {
+        stopWaiting();
+        return;
+      }
+      // Not allowed yet: wait for the next click or key press (a few times, then give up quietly).
+      if (alive && tries < 4) events.forEach((e) => window.addEventListener(e, retry, { once: true }));
+    };
+    const retry = () => {
+      stopWaiting();
+      if (alive) void attempt();
+    };
+    void attempt();
+    return () => {
+      alive = false;
+      stopWaiting();
+      stopAudioLevels();
+    };
+  }, [on]);
+}
+
 /** Desktop app: where its own update stands (null in the browser). */
 function useAppUpdate(): UpdateStatus | null {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   useEffect(() => desktopApi()?.onUpdate(setStatus), []);
   return status;
 }
+
+/** How long the cover and player take to slide away (matches the CSS animation). */
+const PANEL_EXIT_MS = 600;
 
 /** In fullscreen, the buttons fade out after this long without mouse, touch or keyboard use. */
 const HIDE_CONTROLS_AFTER_MS = 2500;
@@ -106,6 +145,18 @@ export function Stage({
   const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
   const hideControls = useHideControlsInFullscreen(panel !== null);
+  useRealSound(settings.reactToSound && settings.breakVisual === 'bars');
+
+  // Switching "lyrics only" on slides the cover and player away; switching it off brings them back.
+  const presence = usePresence(!settings.lyricsOnly, settings.reduceMotion ? 0 : PANEL_EXIT_MS);
+  const showPanel = !!track && presence.mounted;
+  const panelLeaving = presence.leaving;
+  useEffect(() => {
+    // The lyrics area changed width: lyric styles that measure themselves look again.
+    if (settings.reduceMotion) return;
+    const id = setTimeout(() => window.dispatchEvent(new Event('resize')), PANEL_EXIT_MS + 60);
+    return () => clearTimeout(id);
+  }, [settings.lyricsOnly]);
 
   const { palette, ready } = usePalette(track?.artUrl);
   const { lyrics } = useLyrics(track);
@@ -301,7 +352,7 @@ export function Stage({
     <div
       className={`stage current-${currentStyle}${desktop ? ` is-desktop platform-${desktop.platform}` : ''}${settings.lyricsOnly ? ' lyrics-only' : ''}${panel ? ' panel-open' : ''}${
         track ? '' : ' no-track'
-      }${hideControls ? ' controls-hidden' : ''}`}
+      }${hideControls ? ' controls-hidden' : ''}${settings.reduceMotion ? ' calm-ui' : ''}`}
       style={stageStyle}
     >
       <Background
@@ -383,8 +434,12 @@ export function Stage({
         </div>
       )}
 
-      <main className="stage-main">
-        {!settings.lyricsOnly && <NowPlaying engine={engine} state={state} />}
+      <main className={`stage-main${showPanel ? ' has-panel' : ''}`}>
+        {showPanel && (
+          <div className={`np-slot${panelLeaving ? ' leaving' : ''}`} inert={panelLeaving || undefined}>
+            <NowPlaying engine={engine} state={state} />
+          </div>
+        )}
         <div className="stage-lyrics">{content}</div>
       </main>
 

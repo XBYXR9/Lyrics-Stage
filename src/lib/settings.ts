@@ -4,6 +4,7 @@ import type { StyleChoice } from './types';
 
 export type BackgroundMode = 'art' | 'fluid';
 export type WordSweep = 'estimated' | 'real-only' | 'off';
+export type BreakVisualChoice = 'bars' | 'dots';
 
 export interface Settings {
   /** Which lyric style to use ("auto" picks one per song). */
@@ -18,6 +19,10 @@ export interface Settings {
   wordSweep: WordSweep;
   /** Long, smooth crossfades when Spotify Automix / Crossfade blends songs. */
   automixBlend: boolean;
+  /** What to show during instrumental breaks: moving bars, or the three dots. */
+  breakVisual: BreakVisualChoice;
+  /** Windows desktop app: make the bars follow the real sound instead of an estimated rhythm. */
+  reactToSound: boolean;
   /** Tone down movement and blur. */
   reduceMotion: boolean;
   /** Hide the player controls and show only lyrics. */
@@ -38,6 +43,8 @@ export const DEFAULT_SETTINGS: Settings = {
   background: 'art',
   wordSweep: 'estimated',
   automixBlend: true,
+  breakVisual: 'bars',
+  reactToSound: false,
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,
   alwaysOnTop: false,

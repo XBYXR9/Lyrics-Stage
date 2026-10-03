@@ -12,7 +12,7 @@ import type { TrackInfo, TransitionKind } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
 import { PlainLyrics } from './PlainLyrics';
 import { STYLE_BY_ID } from './styles';
-import { Dots } from './styles/Dots';
+import { BreakVisualContext, Dots } from './styles/Dots';
 
 interface Layer {
   key: number;
@@ -113,6 +113,11 @@ function LyricsLayer({
   const vibe = useMemo(() => analyzeVibe(lyrics, palette), [lyrics, palette]);
   const styleId = settings.style === 'auto' ? vibe.autoStyle : settings.style;
   const live = layer.phase !== 'out';
+  // What the instrumental breaks show (bars or dots), shared with every lyric style below.
+  const breakVisual = useMemo(
+    () => ({ mode: settings.breakVisual, energy: vibe.energy, calm: settings.reduceMotion }),
+    [settings.breakVisual, vibe.energy, settings.reduceMotion],
+  );
 
   let body;
   if (loading || !ready) {
@@ -178,7 +183,7 @@ function LyricsLayer({
       }
       aria-hidden={!live}
     >
-      {body}
+      <BreakVisualContext.Provider value={breakVisual}>{body}</BreakVisualContext.Provider>
     </div>
   );
 }

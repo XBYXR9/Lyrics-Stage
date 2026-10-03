@@ -25,6 +25,7 @@ export function SettingsPanel({
   onSignIn?: () => void;
 }) {
   const desktopApp = !!desktopApi();
+  const platform = desktopApi()?.platform;
   const set = updateSettings;
   const choices: { id: StyleChoice; name: string; blurb: string }[] = [
     { id: 'auto', name: 'Auto', blurb: 'Picks a style that fits each song.' },
@@ -81,6 +82,34 @@ export function SettingsPanel({
             Most songs only have line timing, so word timing is estimated. “Only exact” uses word highlighting just when
             the lyrics have real word timing.
           </p>
+        </Section>
+
+        <Section title="Instrumental breaks">
+          <Segmented
+            value={settings.breakVisual}
+            onChange={(v) => set({ breakVisual: v })}
+            options={[
+              { value: 'bars', label: 'Visualizer' },
+              { value: 'dots', label: 'Dots' },
+            ]}
+          />
+          <p className="hint">
+            When the singing pauses, moving bars in the album’s colors keep the beat. A thin line shows when the lyrics
+            come back.
+          </p>
+          {settings.breakVisual === 'bars' && desktopApp && platform === 'win32' && (
+            <>
+              <Toggle
+                checked={settings.reactToSound}
+                onChange={(v) => set({ reactToSound: v })}
+                label="Follow the real sound (experimental)"
+              />
+              <p className="hint">
+                Listens to your computer’s sound output, so the bars hit the real beat. Everything playing is heard,
+                not just Spotify. The sound is analysed inside the app and is never recorded or sent anywhere.
+              </p>
+            </>
+          )}
         </Section>
 
         <Section title="Lyrics timing">

@@ -104,6 +104,7 @@ badge and crossfades the lyrics for exactly as long as the songs overlap.
 | Spotify volume (− / +) | ✅ | ✅ through Windows' Volume Mixer | ⚠️ depends on the Spotify version |
 | Follow your phone or a speaker | with **Sign in with Spotify** | with **Sign in with Spotify** | with **Sign in with Spotify** |
 | Automix / Crossfade blends | ✅ | ✅ | ✅ |
+| Break visualizer follows the real sound | ❌ (estimated rhythm) | ✅ opt-in | ❌ (estimated rhythm) |
 
 **Windows volume note:** Windows' media controls have no volume, so the volume buttons move Spotify's slider in
 Windows' **Volume Mixer** (not the slider inside Spotify). The first press takes a second while a small helper starts.
@@ -113,6 +114,22 @@ Windows' **Volume Mixer** (not the slider inside Spotify). The first press takes
 Lyrics Stage counts time from the start of each song instead. If you open the app in the middle of a song, or seek
 inside Spotify, the timing will be off until the next song. To fix it right away, **click a lyric line** or the
 progress bar: that seeks Spotify to a known spot, and the timing is exact again.
+
+## Instrumental-break visualizer
+
+When the singing pauses, moving bars in the album's colors replace the three dots, and a thin line fills across the
+break so you can see when the lyrics come back (Settings → **Instrumental breaks** switches back to dots).
+
+Spotify doesn't share beat or tempo data with apps like this one, so by default the bars move to an **estimated
+rhythm**: its speed comes from how energetic the song feels (rap and dance songs are fast, ballads slow). It looks like
+a beat, but it isn't locked to the real one.
+
+**Windows only, optional:** Settings → Instrumental breaks → **Follow the real sound (experimental)** makes the bars
+follow the actual music. The app asks Windows for a copy of the sound going to the speakers (`electron/main.ts`) and
+analyses it in the page (`src/lib/audioLevels.ts`). Everything playing on the computer is heard, not just Spotify. The
+sound is analysed on the spot and thrown away: never recorded, saved or sent anywhere. Windows may need a click or key
+press in the app before it shares the sound. If it can't, or the sound is silent, the bars use the estimated rhythm.
+This isn't available on macOS and Linux, where the app can't capture system sound.
 
 ## How it connects to Spotify
 

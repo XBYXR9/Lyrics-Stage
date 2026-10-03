@@ -359,11 +359,11 @@ kbd {
   inset: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: minmax(320px, 40%) 1fr;
-}
-.lyrics-only .stage-main,
-.no-track .stage-main {
   grid-template-columns: 1fr;
+}
+/* With the cover and player showing (they animate in and out, see .np-slot) */
+.stage-main.has-panel {
+  grid-template-columns: auto 1fr;
 }
 .stage-lyrics {
   position: relative;
@@ -372,10 +372,84 @@ kbd {
 }
 
 /* ---------- Now playing ---------- */
+/* Holds the cover and player. It grows in and shrinks away when "lyrics only" is switched. */
+.np-slot {
+  display: grid;
+  place-items: center;
+  width: max(320px, 40vw);
+  animation: slot-grow 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.np-slot.leaving {
+  animation: slot-shrink 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+@keyframes slot-grow {
+  from {
+    width: 0;
+  }
+}
+@keyframes slot-shrink {
+  to {
+    width: 0;
+  }
+}
+/* Coming back: the panel slides in from the left, and the cover pops in with a little spin. */
+.np-slot .np {
+  animation: np-enter 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.np-slot .np-art-wrap {
+  animation: cover-pop 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) 0.12s both;
+}
+@keyframes np-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-16%);
+  }
+}
+@keyframes cover-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.55) rotate(-8deg);
+    filter: blur(8px);
+  }
+}
+/* Going away: the cover shrinks, spins and blurs out first, then the whole panel slides off to the left. */
+.np-slot.leaving .np {
+  animation: np-leave 0.55s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+.np-slot.leaving .np-art-wrap {
+  animation: cover-away 0.5s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+@keyframes np-leave {
+  to {
+    opacity: 0;
+    transform: translateX(-22%);
+  }
+}
+@keyframes np-leave-down {
+  to {
+    opacity: 0;
+    transform: translateY(40%);
+  }
+}
+@keyframes cover-away {
+  to {
+    opacity: 0;
+    transform: scale(0.5) rotate(-9deg);
+    filter: blur(8px);
+  }
+}
+.calm-ui .np-slot,
+.calm-ui .np-slot .np,
+.calm-ui .np-slot .np-art-wrap {
+  animation: none;
+}
+
 .np {
   align-self: center;
   justify-self: center;
-  width: min(420px, 78%);
+  /* a fixed size, so the panel doesn't re-wrap while its slot grows or shrinks */
+  width: min(420px, calc(max(320px, 40vw) * 0.78));
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -383,6 +457,51 @@ kbd {
 }
 .np-art-wrap {
   position: relative;
+  isolation: isolate;
+}
+/* Automix / Crossfade: the old and new covers merge for exactly as long as the songs overlap. */
+.np-art.np-art-old,
+.np-art.merging {
+  mix-blend-mode: screen;
+}
+.np-art.np-art-old {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  animation: merge-out var(--merge-ms, 3s) cubic-bezier(0.45, 0, 0.3, 1) both;
+}
+.np-art.merging {
+  animation: merge-in var(--merge-ms, 3s) cubic-bezier(0.45, 0, 0.3, 1) both;
+}
+@keyframes merge-out {
+  0% {
+    transform: none;
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(-18%) scale(0.8) rotate(-3deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(-32%) scale(0.66) rotate(-6deg);
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+@keyframes merge-in {
+  0% {
+    transform: translateX(32%) scale(0.66) rotate(6deg);
+    opacity: 0;
+    filter: blur(6px);
+  }
+  50% {
+    transform: translateX(18%) scale(0.8) rotate(3deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
 }
 .np-art {
   display: block;
@@ -1210,6 +1329,12 @@ kbd {
   }
   .np-progress {
     grid-area: progress;
+  }
+  .np-slot {
+    display: contents; /* the player is a bottom bar here: no side slot to resize */
+  }
+  .np-slot.leaving .np {
+    animation-name: np-leave-down;
   }
   .np-times,
   .np-volume,
