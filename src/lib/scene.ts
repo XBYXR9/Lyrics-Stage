@@ -78,6 +78,17 @@ export function rippleShape(ageMs: number, strength: number): { radius: number; 
   };
 }
 
+/**
+ * How much of a ring or glow that spreads out to `radius` should still show, given that the picture has this much
+ * `room` from the center to its nearest edge: full while it is well inside, fading to nothing by the time it would
+ * reach the edge. Without it the picture ends in a hard, straight line where its box stops (next to the cover and
+ * player), and rings are sliced off by it.
+ */
+export function edgeFade(radius: number, room: number): number {
+  if (room <= 0) return 0;
+  return Math.min(1, Math.max(0, (room - radius) / (room * 0.35)));
+}
+
 /** Mean of `a[from..to)`. */
 export function mean(a: ArrayLike<number>, from: number, to: number): number {
   let sum = 0;

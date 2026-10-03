@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BIG_BEAT,
+  edgeFade,
   isBigBeat,
   mean,
   mixHsl,
@@ -102,5 +103,16 @@ describe('scene helpers', () => {
   it('uses the nearer color as it is when a color cannot be blended', () => {
     expect(mixHsl('#ff0000', 'hsl(110 40% 50%)', 0.2)).toBe('#ff0000');
     expect(mixHsl('#ff0000', '#00ff00', 0.8)).toBe('#00ff00');
+  });
+
+  it('fades rings and glows out before the picture\'s edge, so nothing is sliced off in a straight line', () => {
+    expect(edgeFade(100, 500)).toBe(1); // well inside
+    expect(edgeFade(500, 500)).toBe(0); // at the edge: gone
+    expect(edgeFade(900, 500)).toBe(0); // past it
+    const near = edgeFade(400, 500);
+    expect(near).toBeGreaterThan(0);
+    expect(near).toBeLessThan(1);
+    expect(edgeFade(300, 500)).toBeGreaterThan(edgeFade(450, 500)); // the closer to the edge, the fainter
+    expect(edgeFade(10, 0)).toBe(0); // no room at all
   });
 });
