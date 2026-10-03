@@ -23,7 +23,9 @@ songs together, the lyrics blend too.
   songs and slower for calm ones.
 - **Adapts to Spotify Automix & Crossfade.** The app spots when songs overlap and crossfades the lyrics and background
   over the same length of time. The old song's lyrics keep moving in time while they fade out, and the two album covers
-  merge into one.
+  merge into one. Spotify itself loses the song position after a blend (its own lyrics go out of time too), so a few
+  seconds after one, the app pauses and plays the music for a split second to make Spotify report the right position,
+  learns how far off it was, and stops pausing once it can predict that (Settings → Song transitions; Premium).
 - **A visualizer in the instrumental breaks.** Instead of three dots, moving bars in the album's colors keep the beat
   while the singing pauses, with a thin line showing when the lyrics come back. (Prefer dots? Settings → Instrumental
   breaks.)

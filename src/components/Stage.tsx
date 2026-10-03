@@ -381,12 +381,14 @@ export function Stage({
     `version: ${appVersion()}`,
     `source: ${engine.kind}${desktop ? ` (desktop app, ${desktop.platform})` : ' (browser)'}`,
     `settings: offset=${sec(settings.offsetMs)}s blendFix=${settings.fixBlendTiming ? 'on' : 'off'} automixBlend=${settings.automixBlend ? 'on' : 'off'}`,
+    `re-sync after a blend: ${engine.describeBlendBias()}`,
     `typical blend seen: ${sec(state.typicalBlendMs)}s`,
     `now: ${track ? `"${track.name}" clock=${sec(engine.clock.now())} of ${sec(track.durationMs)} playing=${state.isPlaying ? 1 : 0} nudge=${sec(nudgeMs)}s` : 'no song'}`,
   ];
 
   // Tell the engine whether to correct the song position after an Automix / Crossfade hand-over.
   useEffect(() => engine.setBlendTimingFix(settings.fixBlendTiming), [engine, settings.fixBlendTiming]);
+  useEffect(() => engine.setResyncAfterBlend(settings.resyncAfterBlend), [engine, settings.resyncAfterBlend]);
 
   // Desktop app: keep the window above others if the user wants a lyrics "mini player".
   useEffect(() => {

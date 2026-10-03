@@ -302,6 +302,18 @@ export function SettingsPanel({
             blend, so the lyrics run early until you pause or seek. This takes that off for you. If the lyrics come
             late after a blend instead, switch it off.
           </p>
+          <Toggle
+            checked={settings.resyncAfterBlend}
+            onChange={(v) => set({ resyncAfterBlend: v })}
+            label="Re-sync the timing after a blend"
+          />
+          <p className="hint">
+            Spotify’s own apps have the same problem: after a blend the song position stays wrong until Spotify refreshes
+            it, which pausing and playing again does (so does seeking, the thing you would do by hand). A few seconds
+            after a blend, Lyrics Stage pauses and plays the music for a split second to do that, measures how far off
+            Spotify was, and learns from it. Once it can tell how far off Spotify will be, it stops pausing the music
+            and just takes that off. Needs Spotify Premium. Switch it off if you don’t want the music touched.
+          </p>
           <p className="hint">
             <b>Turn on Automix:</b> in the Spotify app, click your profile picture → <b>Settings</b> → <b>Playback</b> →
             switch on <b>Automix</b> (or <b>Crossfade songs</b>). Needs Spotify Premium; Automix works on select
