@@ -12,8 +12,8 @@
 //   "first-report": the position Spotify gave for the new song when it showed up
 //                   (less the time since the switch): the new song started that far in
 //   "old-song":     how much of the old song was left when it was replaced
-// When one guess has been right on the last few blends, the app uses it and stops
-// pausing the music (it still measures again now and then, to check).
+// When one guess has been right on the last two blends, the app uses it and stops
+// pausing the music (it still measures again now and then, to check, less and less often).
 
 /** One measurement: the real error `b` (ms) and the two guesses that were made for that blend. */
 export interface BiasSample {
@@ -27,9 +27,12 @@ export type BiasRule = 'none' | 'first-report' | 'old-song';
 /** How many measurements are kept. */
 const KEEP = 8;
 /** A rule has to be right on this many measurements in a row to be trusted. */
-const NEED = 3;
-/** Blends in a row that use a trusted rule before measuring again to check it. */
-const TRUSTED_USES = 3;
+const NEED = 2;
+/**
+ * Blends in a row that use a trusted rule before measuring again to check it. The more checks it has passed in a
+ * row, the longer it waits for the next one, so the music is paused less and less.
+ */
+const CHECK_AFTER = [2, 4, 8, 16];
 /** Smaller than this counts as "no error" (ms). */
 const SMALL_MS = 500;
 
@@ -56,6 +59,8 @@ function ruleIsRight(rule: BiasRule, s: BiasSample): boolean {
 export class BlendBiasLearner {
   private samples: BiasSample[];
   private trustedUses = 0;
+  /** Checks of the trusted rule passed in a row. */
+  private passed = 0;
 
   constructor(
     samples: BiasSample[] = [],
@@ -69,6 +74,8 @@ export class BlendBiasLearner {
   }
 
   record(sample: BiasSample) {
+    const trusted = this.trustedRule();
+    this.passed = trusted && ruleIsRight(trusted, sample) ? this.passed + 1 : 0;
     this.samples.push(sample);
     if (this.samples.length > KEEP) this.samples.splice(0, this.samples.length - KEEP);
     this.onChange?.([...this.samples]);
@@ -94,10 +101,10 @@ export class BlendBiasLearner {
   /**
    * What to do for the next blend: "measure" it (pause and resume the music a few seconds in, and learn from it), or
    * "trust" the rule that has been right lately and leave the music alone. A trusted rule is checked again every
-   * few blends.
+   * few blends (less often each time it passes).
    */
   plan(): 'measure' | 'trust' {
-    if (!this.trustedRule() || this.trustedUses >= TRUSTED_USES) {
+    if (!this.trustedRule() || this.trustedUses >= CHECK_AFTER[Math.min(this.passed, CHECK_AFTER.length - 1)]) {
       this.trustedUses = 0;
       return 'measure';
     }

@@ -311,8 +311,10 @@ export function SettingsPanel({
             Spotify’s own apps have the same problem: after a blend the song position stays wrong until Spotify refreshes
             it, which pausing and playing again does (so does seeking, the thing you would do by hand). A few seconds
             after a blend, Lyrics Stage pauses and plays the music for a split second to do that, measures how far off
-            Spotify was, and learns from it. Once it can tell how far off Spotify will be, it stops pausing the music
-            and just takes that off. Needs Spotify Premium. Switch it off if you don’t want the music touched.
+            Spotify was, and learns from it. Once it can tell how far off Spotify will be (after about two blends), it
+            stops pausing the music and just takes that off, checking again less and less often. In the desktop app,
+            when the Spotify app on this computer is playing, it pauses that app directly, which makes the gap much
+            shorter. Needs Spotify Premium. Switch it off if you don’t want the music touched.
           </p>
           <p className="hint">
             <b>Turn on Automix:</b> in the Spotify app, click your profile picture → <b>Settings</b> → <b>Playback</b> →
