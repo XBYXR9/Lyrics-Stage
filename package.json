@@ -1,7 +1,7 @@
 {
   "name": "spotify-lyrics-stage",
   "private": true,
-  "version": "0.5.2",
+  "version": "0.5.3",
   "type": "module",
   "description": "Apple Music-style animated lyrics for Spotify — a desktop app that follows the Spotify app (Automix included), plus a web version.",
   "scripts": {

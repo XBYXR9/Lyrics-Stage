@@ -19,4 +19,10 @@ describe('settings from an older version', () => {
     expect(migrateSettings({ reactToSound: false })).toEqual({});
     expect(migrateSettings({ reactToSound: true, soundSync: 'off' })).toEqual({ soundSync: 'off' });
   });
+
+  it('carries the 0.5.2 "big beats while singing" switch over under its new name', () => {
+    expect(migrateSettings({ flashOnBigBeats: false })).toEqual({ flashWhileSinging: false });
+    expect(migrateSettings({ flashOnBigBeats: true })).toEqual({ flashWhileSinging: true });
+    expect(migrateSettings({ flashOnBigBeats: true, flashWhileSinging: false })).toEqual({ flashWhileSinging: false });
+  });
 });

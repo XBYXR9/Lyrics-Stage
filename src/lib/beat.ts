@@ -75,14 +75,14 @@ export interface BeatPlan {
   detect: boolean;
   /** Where the chosen flash style may show: only in short pauses between lines, anywhere (a song without lyrics), or never. */
   flashIn: 'pauses' | 'always' | 'never';
-  /** Big beats heard in the real sound also flash anywhere in the song, even while someone is singing. */
-  bigAnywhere: boolean;
+  /** Every bass beat heard in the real sound also flashes anywhere in the song, even while someone is singing. */
+  anywhere: boolean;
 }
 
 /**
  * Works out what to do from the settings and what's on screen. Reduce motion
  * switches everything off. With synced lyrics the flash shows in the short
- * pauses, and big beats (if allowed) show anywhere. With the no-lyrics scene on
+ * pauses, and bass beats (if allowed) show anywhere. With the no-lyrics scene on
  * screen, beats are always listened for (the scene pulses with them) and the
  * flash shows on every strong beat.
  */
@@ -91,15 +91,15 @@ export function beatPlan(o: {
   reduceMotion: boolean;
   lyricsKind: LyricsKind | null;
   sceneShown: boolean;
-  bigBeats: boolean;
+  whileSinging: boolean;
 }): BeatPlan {
-  const off: BeatPlan = { detect: false, flashIn: 'never', bigAnywhere: false };
+  const off: BeatPlan = { detect: false, flashIn: 'never', anywhere: false };
   if (o.reduceMotion) return off;
-  if (o.sceneShown) return { detect: true, flashIn: o.style === 'off' ? 'never' : 'always', bigAnywhere: false };
+  if (o.sceneShown) return { detect: true, flashIn: o.style === 'off' ? 'never' : 'always', anywhere: false };
   if (o.style === 'off') return off;
   const synced = o.lyricsKind === 'synced';
-  if (!synced && !o.bigBeats) return off;
-  return { detect: true, flashIn: synced ? 'pauses' : 'never', bigAnywhere: o.bigBeats };
+  if (!synced && !o.whileSinging) return off;
+  return { detect: true, flashIn: synced ? 'pauses' : 'never', anywhere: o.whileSinging };
 }
 
 // Strong beats are announced here, so the flash and the no-lyrics scene react to the same ones.

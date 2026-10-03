@@ -13,7 +13,7 @@ import {
   stopAudioLevels,
   takeBeat,
 } from '../lib/audioLevels';
-import { BEAT_PREVIEW_EVENT, beatPlan, canFlash, emitBeat, flashShape, FLASH_MS, inSongWindow, isBigBeat, shortPauseAt, type BeatPlan } from '../lib/beat';
+import { BEAT_PREVIEW_EVENT, beatPlan, canFlash, emitBeat, flashShape, FLASH_MS, inSongWindow, shortPauseAt, type BeatPlan } from '../lib/beat';
 import type { Clock } from '../lib/clock';
 import { desktopApi } from '../lib/desktopTypes';
 import { BAR_COUNT, estimatedBeat } from '../lib/pulse';
@@ -91,8 +91,8 @@ export interface BeatFlashOptions {
   lyrics: Lyrics | null;
   /** Is the no-lyrics scene on screen? */
   sceneShown: boolean;
-  /** Big beats heard in the real sound also flash while someone is singing. */
-  bigBeats: boolean;
+  /** Bass beats heard in the real sound also flash while someone is singing. */
+  whileSinging: boolean;
   song: SongWindow;
   offsetMs: number;
   /** 0..1, how energetic the song feels: sets the speed of the estimated rhythm. */
@@ -114,7 +114,7 @@ export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPla
     reduceMotion: o.reduceMotion,
     lyricsKind: o.lyrics?.kind ?? null,
     sceneShown: o.sceneShown,
-    bigBeats: o.bigBeats,
+    whileSinging: o.whileSinging,
   });
   const latest = useLatest({ ...o, plan });
   const memory = useRef({ prevT: -1, at: -Infinity, strength: 0, dark: true });
@@ -179,9 +179,9 @@ export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPla
       m.prevT = t;
       if (beat > 0) {
         emitBeat(beat);
-        // Big beats in the real sound glow anywhere in the song; the estimated rhythm isn't the real beat, so it stays in the pauses.
-        const big = p.bigAnywhere && heard && isBigBeat(beat);
-        const here = big || p.flashIn === 'always' || (p.flashIn === 'pauses' && !!lyrics && shortPauseAt(lyrics.lines, t));
+        // Every bass beat in the real sound glows anywhere in the song (harder beats brighter); the estimated rhythm
+        // isn't the real beat, so it stays in the pauses.
+        const here = (p.anywhere && heard) || p.flashIn === 'always' || (p.flashIn === 'pauses' && !!lyrics && shortPauseAt(lyrics.lines, t));
         if (here && canFlash(now, m.at)) {
           centre();
           m.at = now;

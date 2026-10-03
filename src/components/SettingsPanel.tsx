@@ -138,13 +138,13 @@ export function SettingsPanel({
             </button>
           )}
           <Toggle
-            checked={settings.flashOnBigBeats}
-            onChange={(v) => set({ flashOnBigBeats: v })}
-            label="Big beats glow even while singing"
+            checked={settings.flashWhileSinging}
+            onChange={(v) => set({ flashWhileSinging: v })}
+            label="Bass beats glow even while singing"
           />
           <p className="hint">
             Shows on strong beats in the split-second pauses between lines, and on every strong beat in songs without
-            lyrics. With <b>Follow your PC’s sound</b> (Windows), big beats also glow while someone is singing. Never more than three times a second, soft and tinted (never white). It’s off with Reduce motion.
+            lyrics. With <b>Follow your PC’s sound</b> (Windows), every bass beat also glows while someone is singing, the harder the brighter. Never more than three times a second, soft and tinted (never white). It’s off with Reduce motion.
           </p>
         </Section>
 
