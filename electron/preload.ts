@@ -1,7 +1,7 @@
 // Gives the lyrics page a small, safe API (`window.lyricsStage`) to talk to
 // the main process. The page gets no other access to the computer.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { CommandResult, DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi, UpdateStatus } from '../src/lib/desktopTypes';
+import type { CommandResult, DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi, SpotifyLoginResult, UpdateStatus } from '../src/lib/desktopTypes';
 
 const api: LyricsStageDesktopApi = {
   isDesktop: true,
@@ -23,6 +23,8 @@ const api: LyricsStageDesktopApi = {
     return () => ipcRenderer.removeListener('ls:update', listener);
   },
   installUpdate: () => ipcRenderer.invoke('ls:update-install'),
+  signInWithSpotify: (authUrl: string) => ipcRenderer.invoke('ls:spotify-login', authUrl) as Promise<SpotifyLoginResult>,
+  cancelSpotifyLogin: () => ipcRenderer.invoke('ls:spotify-login-cancel'),
 };
 
 contextBridge.exposeInMainWorld('lyricsStage', api);

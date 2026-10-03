@@ -14,6 +14,7 @@ export function SettingsPanel({
   engineKind,
   onClose,
   onSignOut,
+  onSignIn,
 }: {
   settings: Settings;
   vibe: Vibe | null;
@@ -21,7 +22,9 @@ export function SettingsPanel({
   engineKind: EngineKind;
   onClose: () => void;
   onSignOut: () => void;
+  onSignIn?: () => void;
 }) {
+  const desktopApp = !!desktopApi();
   const set = updateSettings;
   const choices: { id: StyleChoice; name: string; blurb: string }[] = [
     { id: 'auto', name: 'Auto', blurb: 'Picks a style that fits each song.' },
@@ -158,7 +161,34 @@ export function SettingsPanel({
           <Toggle checked={settings.reduceMotion} onChange={(v) => set({ reduceMotion: v })} label="Reduce motion" />
         </Section>
 
-        {engineKind === 'desktop' && (
+        {desktopApp && engineKind !== 'demo' && (
+          <Section title="Spotify connection">
+            {engineKind === 'desktop' ? (
+              <>
+                <p className="hint">Following the Spotify app on this computer.</p>
+                {onSignIn && (
+                  <button className="btn wide" onClick={onSignIn}>
+                    Sign in with Spotify
+                  </button>
+                )}
+                <p className="hint">
+                  Signing in uses Spotify’s own data: exact timing and covers, and it follows your phone or speakers too.
+                  It needs a free Spotify developer app (a one-time setup).
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="hint">Signed in to Spotify.</p>
+                <button className="btn wide" onClick={onSignOut}>
+                  Sign out
+                </button>
+                <p className="hint">Lyrics Stage then follows the Spotify app on this computer again.</p>
+              </>
+            )}
+          </Section>
+        )}
+
+        {desktopApp && (
           <Section title="Window">
             <Toggle
               checked={settings.alwaysOnTop}
@@ -186,7 +216,7 @@ export function SettingsPanel({
           </ul>
         </Section>
 
-        {engineKind !== 'desktop' && (
+        {(engineKind === 'demo' || (engineKind === 'web-api' && !desktopApp)) && (
           <button className="btn ghost wide" onClick={onSignOut}>
             {engineKind === 'demo' ? 'Leave the demo' : 'Disconnect Spotify'}
           </button>

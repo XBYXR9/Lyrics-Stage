@@ -1,6 +1,10 @@
 // Spotify login using "Authorization Code with PKCE".
 // PKCE lets a website log in without a client secret, so everything can run
-// in the browser on your own computer.
+// in the browser on your own computer. The desktop app uses the same login:
+// Spotify's page opens in the person's browser and sends the answer back to a
+// small listener in the app (electron/spotifyLogin.ts) instead of to a website.
+
+import { desktopApi, DESKTOP_REDIRECT_URI, type SpotifyLoginResult } from './desktopTypes';
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -43,7 +47,7 @@ function write(key: string, value: string | null) {
 }
 
 export function redirectUri(): string {
-  return `${window.location.origin}/callback`;
+  return desktopApi() ? DESKTOP_REDIRECT_URI : `${window.location.origin}/callback`;
 }
 
 export function getClientId(): string {
@@ -69,7 +73,13 @@ async function sha256Base64Url(input: string): Promise<string> {
     .replace(/\//g, '_');
 }
 
-export async function startLogin() {
+/**
+ * Starts the Spotify login. The web version leaves the page for Spotify's login
+ * and comes back to /callback (see handleRedirect). The desktop app waits for
+ * the login to finish in the browser and returns an error message, or null when
+ * signed in.
+ */
+export async function startLogin(): Promise<string | null> {
   const clientId = getClientId();
   if (!clientId) throw new Error('Add your Spotify Client ID first.');
   const verifier = randomString(64);
@@ -85,8 +95,19 @@ export async function startLogin() {
     scope: SCOPES,
     state,
   });
+  const desktop = desktopApi();
+  if (desktop) return completeLogin(await desktop.signInWithSpotify(`${AUTH_URL}?${params}`));
   window.location.assign(`${AUTH_URL}?${params}`);
+  return null;
 }
+
+/** Plain-language messages for the desktop sign-in's own errors. */
+const DESKTOP_ERRORS: Record<string, string> = {
+  cancelled: 'Sign-in was cancelled.',
+  timeout: 'Spotify didn’t answer in time. Please try again.',
+  port_in_use: `Another program is using port ${new URL(DESKTOP_REDIRECT_URI).port}, which the sign-in needs. Close it and try again.`,
+  browser_failed: 'Couldn’t open your web browser for the Spotify login.',
+};
 
 function saveToken(json: { access_token: string; refresh_token?: string; expires_in: number }) {
   const previous = loadToken();
@@ -125,15 +146,22 @@ export function handleRedirect(): Promise<string | null> {
 async function finishLogin(): Promise<string | null> {
   if (window.location.pathname !== '/callback') return null;
   const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const error = params.get('error');
-  const state = params.get('state');
+  window.history.replaceState({}, '', '/');
+  return completeLogin({
+    code: params.get('code') ?? undefined,
+    state: params.get('state') ?? undefined,
+    error: params.get('error') ?? undefined,
+  });
+}
+
+/** Checks Spotify's answer and swaps the code for tokens. Returns an error message, or null when signed in. */
+async function completeLogin({ code, state, error }: SpotifyLoginResult): Promise<string | null> {
   const expectedState = read(KEY_STATE);
   const verifier = read(KEY_VERIFIER);
-  window.history.replaceState({}, '', '/');
   write(KEY_STATE, null);
   write(KEY_VERIFIER, null);
 
+  if (error && DESKTOP_ERRORS[error]) return DESKTOP_ERRORS[error];
   if (error) return error === 'access_denied' ? 'Login was cancelled.' : `Spotify said: ${error}`;
   if (!code || !verifier || state !== expectedState) return 'Login failed — please try again.';
 

@@ -21,6 +21,8 @@ function fakeApi() {
     setAlwaysOnTop: async () => {},
     onUpdate: () => () => {},
     installUpdate: async () => {},
+    signInWithSpotify: async () => ({ error: 'cancelled' }),
+    cancelSpotifyLogin: async () => {},
   };
   return { api, sent, emit: (s: DesktopSnapshot) => listener?.(s) };
 }

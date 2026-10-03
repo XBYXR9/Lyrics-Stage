@@ -198,6 +198,7 @@ export class DemoEngine extends BaseEngine implements Engine {
   readonly kind = 'demo';
   readonly isDemo = true;
   readonly searchMode = 'results';
+  readonly canPlayHere = true;
   private songs: DemoSong[] = [];
   private index = 0;
   private queued: number | null = null;

@@ -53,6 +53,22 @@ export interface CommandResult {
   volume?: number;
 }
 
+/**
+ * "Sign in with Spotify" in the desktop app: Spotify sends the login back to
+ * this address, where the app listens only while a login is in progress. It
+ * must be added as a Redirect URI in the Spotify developer app.
+ */
+export const DESKTOP_REDIRECT_PORT = 43117;
+export const DESKTOP_REDIRECT_URI = `http://127.0.0.1:${DESKTOP_REDIRECT_PORT}/callback`;
+
+/** What came back from Spotify's login page (the code is swapped for tokens by the page). */
+export interface SpotifyLoginResult {
+  code?: string;
+  state?: string;
+  /** Spotify's error ("access_denied"), or ours: "timeout", "cancelled", "port_in_use", ... */
+  error?: string;
+}
+
 /** Where the desktop app's own update stands. */
 export type UpdateStatus =
   | { state: 'none' }
@@ -78,6 +94,10 @@ export interface LyricsStageDesktopApi {
   onUpdate(cb: (s: UpdateStatus) => void): () => void;
   /** Restarts into the downloaded update. */
   installUpdate(): Promise<void>;
+  /** Opens Spotify's login page (`authUrl`) in the browser and waits for the answer. */
+  signInWithSpotify(authUrl: string): Promise<SpotifyLoginResult>;
+  /** Stops waiting for a login started with signInWithSpotify. */
+  cancelSpotifyLogin(): Promise<void>;
 }
 
 /** Only Spotify URIs may be sent to the Spotify app (checked in both processes). */
