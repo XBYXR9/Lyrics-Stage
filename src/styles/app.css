@@ -314,7 +314,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+  padding: max(12px, env(safe-area-inset-top), var(--safe-area-inset-top, 0px)) 16px 12px;
 }
 .topbar .spacer {
   flex: 1;
@@ -1408,7 +1408,8 @@ kbd {
   .stage-main {
     display: flex;
     flex-direction: column;
-    padding-top: 60px;
+    /* the top bar grows by however much the status bar is taller than its usual 12px */
+    padding-top: calc(60px + max(0px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)) - 12px));
   }
   .stage-lyrics {
     order: 1;
@@ -1417,7 +1418,7 @@ kbd {
   .np {
     order: 2;
     width: auto;
-    margin: 0 12px max(12px, env(safe-area-inset-bottom));
+    margin: 0 12px max(12px, env(safe-area-inset-bottom), var(--safe-area-inset-bottom, 0px));
     padding: 10px 12px 6px;
     border-radius: 18px;
     background: rgba(20, 18, 28, 0.45);

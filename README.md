@@ -1,7 +1,7 @@
 # Lyrics Stage
 
 **Apple Music–style animated lyrics for whatever you play on Spotify.** Get it as a **desktop app** (macOS, Windows,
-Linux) that follows the Spotify app you're already logged into. There's no Spotify developer account to set up, and
+Linux) that follows the Spotify app you're already logged into, or as an **Android app** (see [docs/ANDROID.md](docs/ANDROID.md)). There's no Spotify developer account to set up, and
 Spotify's **Automix** and **Crossfade** work. Lyrics styles and colors adapt to each song, and when Spotify blends two
 songs together, the lyrics blend too.
 
@@ -68,6 +68,13 @@ npm run app:build      # or: make an installer in release/
 
 Everything about the app, including the Linux timing note and how to publish installers, is in
 **[docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)**.
+
+## Android
+
+There's an **Android app** too: download `Lyrics-Stage-<version>-android.apk` from the
+[latest release](https://github.com/XBYXR9/Lyrics-Stage/releases/latest) and install it. The Spotify app plays the music
+and Lyrics Stage shows the lyrics next to it (or on a tablet, or while the music plays on another device). It signs in
+with Spotify like the web version. [Full guide: docs/ANDROID.md](docs/ANDROID.md).
 
 ## Or use the web version
 

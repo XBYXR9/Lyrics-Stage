@@ -1,0 +1,68 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace = "io.github.xbyxr9.lyricsstage"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "io.github.xbyxr9.lyricsstage"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // The release workflow passes these (see .github/workflows/release.yml); a local build uses 1 / "dev".
+        versionCode = Integer.parseInt((project.findProperty('appVersionCode') ?: '1').toString())
+        versionName = (project.findProperty('appVersionName') ?: 'dev').toString()
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // The APK has to be signed to install. Use your own key by setting ANDROID_KEYSTORE_FILE, ANDROID_KEYSTORE_PASSWORD,
+    // ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD (the release workflow does this when its secrets are set). Without
+    // them the key in lyricsstage.keystore is used, so every build has the same signature and installs over the last
+    // one. See docs/ANDROID.md.
+    signingConfigs {
+        release {
+            storeFile file(System.getenv('ANDROID_KEYSTORE_FILE') ?: 'lyricsstage.keystore')
+            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: 'lyricsstage'
+            keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'lyricsstage'
+            keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: 'lyricsstage'
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

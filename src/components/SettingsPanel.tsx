@@ -6,6 +6,7 @@ import { toast } from './Toasts';
 import { audioCounting, getAudioStatus, MAX_SOUND_DELAY_MS, peekAudioLoudness, startAudioLevels, subscribeAudioStatus } from '../lib/audioLevels';
 import { BEAT_PREVIEW_EVENT } from '../lib/beat';
 import { desktopApi } from '../lib/desktopTypes';
+import { isNativeApp } from '../lib/nativeApp';
 import type { EngineKind } from '../lib/engine';
 import { updateSettings, type BeatStyle, type Settings } from '../lib/settings';
 import type { StyleChoice, Vibe } from '../lib/types';
@@ -32,6 +33,9 @@ export function SettingsPanel({
   onSignOut,
   onSignIn,
   timingHeader,
+  songNudgeMs = 0,
+  onNudge,
+  onResetNudge,
 }: {
   settings: Settings;
   vibe: Vibe | null;
@@ -42,8 +46,13 @@ export function SettingsPanel({
   onSignIn?: () => void;
   /** The first lines of the timing report (version, source, settings, what's playing). */
   timingHeader?: () => string[];
+  /** The timing nudge for the song playing now (ms; positive = lyrics earlier), and how to change it. */
+  songNudgeMs?: number;
+  onNudge?: (deltaMs: number) => void;
+  onResetNudge?: () => void;
 }) {
   const desktopApp = !!desktopApi();
+  const native = isNativeApp();
   const platform = desktopApi()?.platform;
   const set = updateSettings;
   const choices: { id: StyleChoice; name: string; blurb: string }[] = [
@@ -195,10 +204,27 @@ export function SettingsPanel({
             <kbd>]</kbd>.
           </p>
           <p className="hint">
-            Just this song is off (for example after an Automix)? Press <kbd>,</kbd> to show the lyrics later or{' '}
-            <kbd>.</kbd> to show them earlier, half a second at a time (<kbd>&lt;</kbd> and <kbd>&gt;</kbd>: a tenth). It
-            ends with the song, and the music keeps playing.
+            Just this song is off (for example after an Automix)? Nudge it here
+            {native ? '' : <> or press <kbd>,</kbd> (later) and <kbd>.</kbd> (earlier), <kbd>&lt;</kbd> and <kbd>&gt;</kbd> for a tenth of a second</>}
+            . It ends with the song, and the music keeps playing.
           </p>
+          {onNudge && (
+            <div className="row">
+              <button className="btn small" onClick={() => onNudge(-500)}>
+                Later
+              </button>
+              <span className="value">
+                {songNudgeMs > 0 ? '+' : ''}
+                {(songNudgeMs / 1000).toFixed(1)}s
+              </span>
+              <button className="btn small" onClick={() => onNudge(500)}>
+                Earlier
+              </button>
+              <button className="btn small" onClick={onResetNudge} disabled={songNudgeMs === 0}>
+                Reset
+              </button>
+            </div>
+          )}
         </Section>
 
         <Section title="Text size">
@@ -304,6 +330,7 @@ export function SettingsPanel({
 
         {timingHeader && <TimingReport header={timingHeader} />}
 
+        {!native && (
         <Section title="Keyboard shortcuts">
           <ul className="keys">
             <li>
@@ -323,6 +350,7 @@ export function SettingsPanel({
             </li>
           </ul>
         </Section>
+        )}
 
         {(engineKind === 'demo' || (engineKind === 'web-api' && !desktopApp)) && (
           <button className="btn ghost wide" onClick={onSignOut}>

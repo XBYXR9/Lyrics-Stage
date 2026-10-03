@@ -15,7 +15,7 @@ This page explains the main parts of the app and how they fit together.
                          Stage: background · lyric layers · player panel
 ```
 
-There are three engines, and they all share the same song-change and Automix logic (`BaseEngine.observe` in
+There are three engines (the Android app uses the Web API one, see [ANDROID.md](ANDROID.md)), and they all share the same song-change and Automix logic (`BaseEngine.observe` in
 `src/lib/engine.ts`):
 
 | Engine | Used by | Source |

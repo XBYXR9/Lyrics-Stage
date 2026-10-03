@@ -1,8 +1,8 @@
 name: Build desktop app
 
-# Builds installers for macOS, Windows and Linux.
+# Builds installers for macOS, Windows and Linux, and the Android app (an APK).
 # - Run it by hand (Actions → "Build desktop app" → Run workflow) to get the
-#   installers as downloadable artifacts.
+#   installers and the APK as downloadable artifacts.
 # - Push a tag like v0.2.0 to also publish them on a GitHub Release. Installed
 #   apps find it there and update themselves (see electron/updater.ts). The tag
 #   must match "version" in package.json.
@@ -79,10 +79,76 @@ jobs:
             release/*.blockmap
           if-no-files-found: error
 
+  # The Android app: the web build inside a Capacitor shell (see docs/ANDROID.md).
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but package.json says $expected. Change \"version\" in package.json to match, then tag again."
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm test
+      - name: Build the web app and copy it into the Android project
+        run: npm run typecheck && npx vite build && npx cap sync android
+        env:
+          # Same optional Client ID as the desktop build (repository variable SPOTIFY_CLIENT_ID).
+          VITE_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
+      - name: Use your own signing key (optional)
+        # Set the secrets ANDROID_KEYSTORE_BASE64 (the keystore file, base64), ANDROID_KEYSTORE_PASSWORD,
+        # ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD to sign with a private key. Without them the APK is signed
+        # with the key in android/app/lyricsstage.keystore (fine for installing on your own phone).
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            {
+              echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore"
+              echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+              echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+          fi
+      - name: Build the APK
+        working-directory: android
+        run: |
+          version="$(node -p "require('../package.json').version")"
+          # 0.6.0 -> 600, 1.2.3 -> 10203: each release has a higher number than the last, so it installs over it.
+          code="$(node -p "const [a,b,c]=require('../package.json').version.split('.').map(Number); a*10000+b*100+c")"
+          ./gradlew assembleRelease -PappVersionName="$version" -PappVersionCode="$code"
+          mkdir -p ../release-android
+          cp app/build/outputs/apk/release/app-release.apk "../release-android/Lyrics-Stage-$version-android.apk"
+      - name: Check the APK is signed and has the right version
+        run: |
+          apk="$(ls release-android/*.apk)"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --print-certs "$apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lyrics-stage-android
+          path: release-android/*.apk
+          if-no-files-found: error
+
   release:
     # Publish whatever installers were built, even if one system's build failed.
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') }}
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
