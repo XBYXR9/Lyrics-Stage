@@ -22,7 +22,11 @@ songs together, the lyrics blend too.
 - **Adapts to each song.** Colors come from the album cover. The background and scrolling move faster for energetic
   songs and slower for calm ones.
 - **Adapts to Spotify Automix & Crossfade.** The app spots when songs overlap and crossfades the lyrics and background
-  over the same length of time. The old song's lyrics keep moving in time while they fade out.
+  over the same length of time. The old song's lyrics keep moving in time while they fade out, and the two album covers
+  merge into one.
+- **A visualizer in the instrumental breaks.** Instead of three dots, moving bars in the album's colors keep the beat
+  while the singing pauses, with a thin line showing when the lyrics come back. (Prefer dots? Settings → Instrumental
+  breaks.) On Windows the bars can follow the real sound.
 - **Works with right-to-left lyrics** such as Arabic and Hebrew.
 - **A demo mode** to try every style without Spotify.
 

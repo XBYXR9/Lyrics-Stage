@@ -99,6 +99,27 @@ export function usePalette(url: string | null | undefined): { palette: Palette; 
   return { palette: state.palette, ready: state.url === url };
 }
 
+/**
+ * Keeps something on screen while it plays an exit animation. `mounted` stays
+ * true for `exitMs` after `visible` turns false; `leaving` is true during that
+ * time. With exitMs = 0 it goes away at once. Used for the player panel when
+ * "lyrics only" is switched on.
+ */
+export function usePresence(visible: boolean, exitMs: number): { mounted: boolean; leaving: boolean } {
+  const [mounted, setMounted] = useState(visible);
+  if (visible && !mounted) setMounted(true); // coming back: show right away
+  useEffect(() => {
+    if (visible || !mounted) return;
+    if (exitMs <= 0) {
+      setMounted(false);
+      return;
+    }
+    const id = setTimeout(() => setMounted(false), exitMs);
+    return () => clearTimeout(id);
+  }, [visible, mounted, exitMs]);
+  return { mounted: mounted || visible, leaving: !visible && mounted };
+}
+
 export function formatTime(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

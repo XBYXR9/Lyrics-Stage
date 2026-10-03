@@ -1,26 +1,60 @@
 // Album art, song info, progress bar, playback controls and the device picker.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { formatTime, useFrame } from '../hooks/hooks';
-import type { DeviceInfo, Engine, EngineState } from '../lib/engine';
+import type { DeviceInfo, Engine, EngineState, TrackChange } from '../lib/engine';
 import { BROWSER_PLAYER_NAME } from '../lib/engine';
+import { useSettings } from '../lib/settings';
 import { friendlyError } from '../lib/spotify';
+import { planCoverMerge, type CoverMergePlan } from '../lib/transitions';
 import { DeviceIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, VolumeDownIcon, VolumeUpIcon } from './Icons';
 import { toast } from './Toasts';
 
 const run = (p: Promise<unknown>) => p.catch((e) => toast(friendlyError(e), 'error'));
 
+/**
+ * While Spotify blends two songs, the two album covers merge: the old one
+ * slides aside and fades while the new one slides in over it, taking exactly as
+ * long as the songs overlap. Only for a blend that starts while this is on
+ * screen (not when the player comes back from "lyrics only"). `overlay` is the
+ * old cover while the blend lasts; `merged` stays set until the next song, so
+ * the new cover doesn't replay its normal entrance when the animation ends.
+ */
+function useCoverMerge(change: TrackChange): { overlay: CoverMergePlan | null; merged: CoverMergePlan | null } {
+  const settings = useSettings();
+  const [seen, setSeen] = useState(change.seq);
+  const [merged, setMerged] = useState<CoverMergePlan | null>(null);
+  const [overlay, setOverlay] = useState<CoverMergePlan | null>(null);
+  if (seen !== change.seq) {
+    setSeen(change.seq);
+    const plan = planCoverMerge(change, settings);
+    setMerged(plan);
+    setOverlay(plan);
+  }
+  useEffect(() => {
+    if (!overlay) return;
+    const id = setTimeout(() => setOverlay(null), overlay.ms + 100);
+    return () => clearTimeout(id);
+  }, [overlay]);
+  return { overlay, merged };
+}
+
 export function NowPlaying({ engine, state }: { engine: Engine; state: EngineState }) {
   const [brokenArt, setBrokenArt] = useState<string | null>(null);
+  const { overlay, merged } = useCoverMerge(state.change);
   const track = state.track;
   if (!track) return null;
   const artUrl = track.artUrl !== brokenArt ? track.artUrl : null;
+  const mergedHere = merged?.key === track.key ? merged : null;
+  const ms = (m: CoverMergePlan) => ({ '--merge-ms': `${m.ms}ms` }) as CSSProperties;
   return (
     <section className="np" aria-label="Now playing">
       <div className="np-art-wrap">
+        {overlay && <img key={`old-${overlay.seq}`} className="np-art np-art-old" src={overlay.from} alt="" aria-hidden style={ms(overlay)} />}
         {artUrl ? (
           <img
             key={track.key}
-            className="np-art"
+            className={`np-art${mergedHere ? ' merging' : ''}`}
+            style={mergedHere ? ms(mergedHere) : undefined}
             src={artUrl}
             alt={`${track.album} cover`}
             onError={() => {

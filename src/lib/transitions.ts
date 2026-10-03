@@ -94,3 +94,32 @@ export function visualTransitionMs(t: TransitionInfo, reduceMotion = false): num
       return 700;
   }
 }
+
+/** The cover animation for an Automix / Crossfade blend: the old cover, how long it lasts, and the new song. */
+export interface CoverMergePlan {
+  from: string;
+  ms: number;
+  seq: number;
+  /** The new song, whose cover stays in its merged place after the animation. */
+  key: string;
+}
+
+/**
+ * Should the old and new album covers merge for this song change? Only for a
+ * real blend, with both covers known, when blending is on and motion isn't
+ * reduced. Lasts as long as the songs overlap.
+ */
+export function planCoverMerge(
+  change: {
+    seq: number;
+    track: { key: string; artUrl: string | null } | null;
+    previous: { artUrl: string | null } | null;
+    transition: TransitionInfo;
+  },
+  opts: { automixBlend: boolean; reduceMotion: boolean },
+): CoverMergePlan | null {
+  const from = change.previous?.artUrl;
+  if (change.transition.kind !== 'blend' || !opts.automixBlend || opts.reduceMotion) return null;
+  if (!from || !change.track?.artUrl) return null;
+  return { from, ms: visualTransitionMs(change.transition), seq: change.seq, key: change.track.key };
+}

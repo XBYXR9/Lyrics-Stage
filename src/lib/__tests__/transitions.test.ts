@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BlendLearner, classifyTransition, MAX_BLEND_MS, visualTransitionMs } from '../transitions';
+import { BlendLearner, classifyTransition, MAX_BLEND_MS, planCoverMerge, visualTransitionMs } from '../transitions';
 
 const base = { prevDurationMs: 200_000, sinceLastReportMs: 500, wasPlaying: true };
 
@@ -64,5 +64,31 @@ describe('visualTransitionMs', () => {
     expect(visualTransitionMs({ kind: 'blend', overlapMs: 5000, startOffsetMs: 0 })).toBe(5000);
     expect(visualTransitionMs({ kind: 'skip', overlapMs: 0, startOffsetMs: 0 })).toBeLessThan(600);
     expect(visualTransitionMs({ kind: 'blend', overlapMs: 5000, startOffsetMs: 0 }, true)).toBe(250);
+  });
+});
+
+describe('cover merge for Automix blends', () => {
+  const change = (kind: 'blend' | 'skip' | 'natural', overlapMs = 5000, over: Record<string, unknown> = {}) => ({
+    seq: 7,
+    track: { key: 'new', artUrl: 'new.jpg' },
+    previous: { artUrl: 'old.jpg' },
+    transition: { kind, overlapMs, startOffsetMs: 0 },
+    ...over,
+  });
+  const on = { automixBlend: true, reduceMotion: false };
+
+  it('plans a merge as long as the songs overlap', () => {
+    expect(planCoverMerge(change('blend', 5000), on)).toEqual({ from: 'old.jpg', ms: 5000, seq: 7, key: 'new' });
+    expect(planCoverMerge(change('blend', 20000), on)!.ms).toBe(8000); // very long overlaps are capped
+  });
+
+  it('only for blends, with both covers, when blending is on and motion isn’t reduced', () => {
+    expect(planCoverMerge(change('skip'), on)).toBeNull();
+    expect(planCoverMerge(change('natural'), on)).toBeNull();
+    expect(planCoverMerge(change('blend'), { ...on, automixBlend: false })).toBeNull();
+    expect(planCoverMerge(change('blend'), { ...on, reduceMotion: true })).toBeNull();
+    expect(planCoverMerge(change('blend', 5000, { previous: { artUrl: null } }), on)).toBeNull();
+    expect(planCoverMerge(change('blend', 5000, { previous: null }), on)).toBeNull();
+    expect(planCoverMerge(change('blend', 5000, { track: { key: 'new', artUrl: null } }), on)).toBeNull();
   });
 });

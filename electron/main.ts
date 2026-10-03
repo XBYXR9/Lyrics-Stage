@@ -3,10 +3,11 @@
 // Opens the lyrics window and links it to the Spotify app on this computer
 // (see bridge/). You stay logged in to Spotify the normal way; no Spotify
 // developer account is needed, and Spotify's own Automix/Crossfade apply.
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
 import { validateCommand, type DesktopSnapshot } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
+import { mayHearSound } from './soundAccess';
 import { cancelSpotifyLogin, signInWithSpotify } from './spotifyLogin';
 import { startUpdates } from './updater';
 
@@ -93,6 +94,14 @@ ipcMain.handle('ls:always-on-top', (_event, on: unknown) => {
 });
 
 app.whenReady().then(() => {
+  // "Follow the real sound" (Windows, opt-in in Settings): when the lyrics page asks to
+  // capture, hand it a copy of the sound going to the speakers and nothing else (the
+  // "video" is just the app's own page, so the screen is never captured).
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    const frame = request.frame;
+    if (frame && mayHearSound(process.platform, frame.url, isAppUrl)) callback({ video: frame, audio: 'loopback' });
+    else callback({});
+  });
   createWindow();
   startUpdates(() => win);
   bridge.start((snapshot) => {

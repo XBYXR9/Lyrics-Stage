@@ -106,6 +106,8 @@ During a blend:
   away while the new song's lyrics rise in (`src/components/LyricsStage.tsx`).
 - The background fades from the old cover to the new one over the same length of time
   (`src/components/Background.tsx`).
+- The player's album cover merges too: the old cover slides aside and fades while the new one slides in over it
+  (`planCoverMerge` in `src/lib/transitions.ts`, drawn in `src/components/NowPlaying.tsx`).
 - A small "Automix blend · 6.2s" badge appears.
 
 ## 5. Lyrics (`src/lib/lyrics.ts`, `src/lib/lrc.ts`)
@@ -184,6 +186,21 @@ tilt. In **Auto** mode it also picks the style:
 - **Apple Music style:** every line shares the same scroll offset, but each line starts moving a little later than the
   one above it, which creates the wave. Lines are blurred more the further they are from the current one. Held notes
   (≥ 1 s, with real word timing) are split into letters that ripple and glow.
+
+### Instrumental breaks
+
+During a break (an *interlude* line), every style shows the same visual (`src/components/styles/Dots.tsx`): 24 bars in
+the cover's colors, plus a thin progress line, or the three dots if you prefer (Settings). The bars follow a rhythm
+estimated from the song's energy (`src/lib/pulse.ts`: low bars thump on every beat, middle bars snap on beats 2 and 4,
+high bars flick on the off-beats). It's worked out from the playback position, so seeking can't desync it. In the
+Windows desktop app, "Follow the real sound" instead feeds the bars from a Web Audio analyser on the system sound
+(`src/lib/audioLevels.ts`).
+
+### Lyrics only
+
+Switching "lyrics only" on slides the cover and player away (the cover shrinks, spins and blurs out first) while the
+lyrics widen; switching it off brings them back with a little pop. The player stays mounted until its exit animation
+ends (`usePresence` in `src/hooks/hooks.ts`). "Reduce motion" skips all of it.
 
 ## 8. Demo mode (`src/lib/demo.ts`)
 
