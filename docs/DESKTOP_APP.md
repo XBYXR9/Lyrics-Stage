@@ -130,7 +130,8 @@ a beat, but it isn't locked to the real one.
 **Beat flash:** on strong beats in the split-second pauses between lines (a gap of 0.25 s up to a long break), the
 album's colors flash in the style you pick in Settings → **Beat flash**: **Glow** (a soft glow and ring behind the
 lyrics), **Full screen** (a soft color wash), **Edges** (the screen's edges light up), **Kick** (the lyrics bump a
-little, no light at all) or **Off**. Never more than three a second, tinted and soft (never white). Off with **Reduce
+little, no light at all) or **Off**. Never more than three a second, tinted and soft (never white), unless you switch on
+**Flash on every fast beat** (about seven a second, for fast drum patterns; not for anyone sensitive to flashing light). Off with **Reduce
 motion**. With **Follow your PC's sound** (below), *every bass beat* (a kick, a bass note, an 808; the harder, the brighter)
 also glows while someone is singing, not only in the pauses (Settings → Beat flash → *Bass beats glow even while singing*). Without the real sound it flashes on the first and third beat of each bar of the estimated rhythm, so it can
 be a little off the real beat.

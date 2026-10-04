@@ -278,16 +278,23 @@ even while singing), since the estimated rhythm isn't the real beat and stays in
 beat (a kick, a bass note, an 808) as a sharp rise in the low bins of the spectrum (30 to 130 Hz). Each bin is
 watched on its own against the lowest it has been lately, so a loud steady bass note in one bin doesn't hide a kick
 rising in the bins around it, and the rises are added up (deep bins count most). Steady loud bass, a slow swell and
-the tail of the last beat don't count; beats are at least 250 ms apart. The analyser's decibel scale is widened
+the tail of the last beat don't count. After a beat the next one only counts once the bass has come down and gone up
+again (`REARM_DIP` and `REARM_RISE` in `src/lib/audioLevels.ts`), with a 90 ms debounce, so fast drum patterns are
+followed beat by beat: before 0.7.0 a fixed 250 ms gap heard only 44 to 71% of the beats in 8th notes at 140 BPM and
+16th notes at 120 BPM (a plain shorter gap isn't enough, it counts a slow-rising 808 twice, which is why the re-arm rule
+exists). The analyser's decibel scale is widened
 (`configureAnalyser`: -90 to -5 dB instead of the default -100 to -30), because in loud music the bass sits above -30 dB
 all the time, which made it read "full" and hid every kick. A beat's strength is how hard it hit compared with the
 hardest recent beat, so harder beats flash brighter, and beats of 0.7 and up are "big" (the no-lyrics scene gives
 those a harder punch and a shockwave). Limits: low voices and instruments near 130 Hz can occasionally set it off,
-and flashes are still capped at three a second, so very fast bass patterns are thinned out. The look is picked in Settings (`BeatStyle`): the hook writes `--bf`,
+and flashes are capped at three a second unless *Flash on every fast beat* is on (see below), so with the default
+settings very fast bass patterns are heard (the no-lyrics scene and the bars follow every beat) but thinned out in the
+flash. The look is picked in Settings (`BeatStyle`): the hook writes `--bf`,
 `--bf-ring` and `--bf-rs` on the `.beat-fx` layer and CSS (`src/styles/lyrics.css`) shows the glow and ring, a
 full-screen wash or lit edges; "kick" scales the lyrics area instead. Flashes are at least 340 ms apart (never more
 than three a second, the accessibility limit for flashing content), the glow never goes above 40% opacity, the wash
-about 26%, and Reduce motion turns it all off. Every beat is also announced on a small bus (`onBeat`) so the scene can
+about 26%, and Reduce motion turns it all off. *Flash on every fast beat* (`fastFlashes`, off by default, with a
+warning for anyone sensitive to flashing light) lowers the gap to 140 ms (`FAST_FLASH_GAP_MS`, about seven a second). Every beat is also announced on a small bus (`onBeat`) so the scene can
 punch with it.
 
 The beats come from the real sound when it's on (`detectBeat` in `src/lib/audioLevels.ts`: bass jumping well above its

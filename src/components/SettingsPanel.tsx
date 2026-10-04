@@ -162,9 +162,13 @@ export function SettingsPanel({
             onChange={(v) => set({ flashWhileSinging: v })}
             label="Bass beats glow even while singing"
           />
+          <Toggle checked={settings.fastFlashes} onChange={(v) => set({ fastFlashes: v })} label="Flash on every fast beat" />
           <p className="hint">
             Shows on strong beats in the split-second pauses between lines, and on every strong beat in songs without
             lyrics. With <b>Follow your PC’s sound</b> (Windows), every bass beat also glows while someone is singing, the harder the brighter. Never more than three times a second, soft and tinted (never white). It’s off with Reduce motion.
+            <br />
+            <b>Flash on every fast beat</b> lets the flash follow fast drum patterns, up to about seven times a second
+            instead of three. Off by default: it is <b>not for anyone sensitive to flashing light</b>.
           </p>
         </Section>
 

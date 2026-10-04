@@ -214,6 +214,7 @@ export function Stage({
       lyrics,
       sceneShown,
       whileSinging: settings.flashWhileSinging,
+      fast: settings.fastFlashes,
       song,
       offsetMs: settings.offsetMs + nudgeMs,
       energy: vibe?.energy ?? 0.5,
