@@ -108,6 +108,9 @@ During a blend:
   (`src/components/Background.tsx`).
 - The player's album cover merges too: the old cover slides aside and fades while the new one slides in over it
   (`planCoverMerge` in `src/lib/transitions.ts`, drawn in `src/components/NowPlaying.tsx`).
+  It is off with Reduce motion, which starts switched on when the system has animations off (Windows: Settings →
+  Accessibility → Visual effects → Animation effects). An explicit "Reduce motion: off" in Settings now wins over the
+  system setting on the main screen (`.calm-ui` in `src/styles/app.css`), and the timing report has a `motion:` line.
 - A small "Automix blend · 6.2s" badge appears.
 
 **Timing after a blend.** When Spotify moves on by itself with Crossfade or Automix, the position it reports for the new
@@ -121,7 +124,10 @@ ran, and then they jumped forward. So now, after a `blend`, `BaseEngine.observe`
 **measured** on earlier blends (the middle value of the last four, `BlendBiasLearner.recentBias()`; nothing before the
 first measurement), or a guess that has proven right on the last two blends (`old-song` is still such a guess, for a
 Crossfade of fixed length). It stops as soon as Spotify refreshes itself: a pause or resume, a seek (here or from another
-device), or a jump in the reports of more than 0.8 to 1.5 s. Skips and natural song endings are never touched, a new
+device), or the reports stepping *back* by about the error (Spotify refreshing itself) or jumping forward by more than
+2.5 s. The first answers after a song change can be stale and then catch up (21.1 s reported while the real position
+was 25.5 s), so for the first 4 s (`CHANGE_SETTLE_MS`) a forward step is not taken for a seek: 0.6.7 took it for one,
+dropped the correction and cancelled the re-sync, which left the lyrics about a second early. Skips and natural song endings are never touched, a new
 song that shows up minutes in is taken for somebody seeking (Automix was seen starting the next song 8 to 21 s in), and
 a song whose position we count ourselves (Linux) has nothing to correct. Settings → Song transitions → *Keep lyrics in
 time after a blend* switches it off.

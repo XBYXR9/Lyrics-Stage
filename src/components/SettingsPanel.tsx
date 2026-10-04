@@ -13,6 +13,9 @@ import type { StyleChoice, Vibe } from '../lib/types';
 import { CloseIcon, PortraitIcon } from './Icons';
 import { STYLES, styleName } from './styles';
 
+/** Does the computer itself ask for less motion (for example Windows with animation effects switched off)? */
+const systemReducesMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 const BEAT_STYLES: { id: BeatStyle; name: string; blurb: string }[] = [
   { id: 'glow', name: 'Glow', blurb: 'A soft glow and ring behind the lyrics.' },
   { id: 'screen', name: 'Full screen', blurb: 'A soft color wash over the whole screen.' },
@@ -333,6 +336,17 @@ export function SettingsPanel({
             )}
           </p>
           <Toggle checked={settings.reduceMotion} onChange={(v) => set({ reduceMotion: v })} label="Reduce motion" />
+          <p className="hint">
+            Tones down movement and blur, and turns off the album cover merge during Automix, the beat effects and the
+            lyric animations.
+            {systemReducesMotion() && (
+              <>
+                {' '}
+                <b>Your system has animations turned off</b> (Windows: Settings → Accessibility → Visual effects →
+                Animation effects), which is why this started switched on. Switch it off here to see them.
+              </>
+            )}
+          </p>
         </Section>
 
         {desktopApp && engineKind !== 'demo' && (

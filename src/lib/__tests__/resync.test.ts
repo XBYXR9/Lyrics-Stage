@@ -191,6 +191,46 @@ describe('re-syncing after a blend', () => {
     expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
   });
 
+  it('does not take a stale first answer that then catches up for Spotify refreshing itself (a real report)', async () => {
+    // The first answer about the new song said 21.1 s while the Spotify app on the same PC said 25.5 s; the next answer
+    // was right. That "jump" of +1.7 s used to drop the correction and cancel the re-sync, so the lyrics ran a second early.
+    const w = new World();
+    const engine = new TestEngine(w);
+    engine.learn(1000, 20_000, 12_000);
+    engine.learn(900, 8_000, 12_000);
+    const A = song('A');
+    const B = song('B');
+    w.start(A.durationMs - 10_000, 0);
+    engine.feed(A, w.reported(), true);
+    await run(engine, A, 4000);
+    w.start(20_000, 1000); // Spotify mixes into B and reports it a second ahead...
+    engine.feed(B, w.reported() - 4400, true); // ...but its very first answer is stale: 4.4 s behind
+    await run(engine, B, 3000);
+    expect(timingReport([])).not.toMatch(/dropped|cancelled/);
+    expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400); // the learned second is still taken off
+    await run(engine, B, 8000);
+    expect(w.pauses).toBe(1); // and the re-sync still ran
+    expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
+  });
+
+  it('still notices Spotify refreshing itself (the position steps back by about the error) and somebody seeking', async () => {
+    const w = new World();
+    const engine = new TestEngine(w);
+    engine.learn(1000, 20_000, 12_000);
+    engine.learn(900, 8_000, 12_000);
+    const A = song('A');
+    const B = song('B');
+    w.start(A.durationMs - 10_000, 0);
+    engine.feed(A, w.reported(), true);
+    await run(engine, A, 4000);
+    w.start(20_000, 1000);
+    await run(engine, B, 5000);
+    w.ahead = 0; // Spotify refreshes on its own: the reports step back by the second
+    await run(engine, B, 2000);
+    expect(timingReport([])).toMatch(/bias 0\.9 dropped: jump of -/);
+    expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
+  });
+
   it('keeps the lyrics in time through the pause, whatever the error was', async () => {
     for (const ahead of [2500, 6000, 9500]) {
       const w = new World();

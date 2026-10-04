@@ -382,6 +382,7 @@ export function Stage({
     `source: ${engine.kind}${desktop ? ` (desktop app, ${desktop.platform})` : ' (browser)'}`,
     `settings: offset=${sec(settings.offsetMs)}s blendFix=${settings.fixBlendTiming ? 'on' : 'off'} automixBlend=${settings.automixBlend ? 'on' : 'off'}`,
     `re-sync after a blend: ${engine.describeBlendBias()}`,
+    `motion: reduceMotion=${settings.reduceMotion ? 'on' : 'off'} system=${window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'animations off' : 'animations on'} lyricsOnly=${settings.lyricsOnly ? 'on' : 'off'}`,
     `typical blend seen: ${sec(state.typicalBlendMs)}s`,
     `now: ${track ? `"${track.name}" clock=${sec(engine.clock.now())} of ${sec(track.durationMs)} playing=${state.isPlaying ? 1 : 0} nudge=${sec(nudgeMs)}s` : 'no song'}`,
   ];
