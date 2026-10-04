@@ -109,22 +109,32 @@ export interface CoverMergePlan {
   key: string;
 }
 
+/** Why the covers don't merge for a song change (null when they do). */
+export type CoverMergeBlocker = 'not-a-blend' | 'blend-off' | 'reduce-motion' | 'no-cover';
+
+type MergeChange = {
+  seq: number;
+  track: { key: string; artUrl: string | null } | null;
+  previous: { artUrl: string | null } | null;
+  transition: TransitionInfo;
+};
+
+/** The first thing in the way of the cover merge, so it can be shown to the person who wonders where it went. */
+export function coverMergeBlocker(change: MergeChange, opts: { automixBlend: boolean; reduceMotion: boolean }): CoverMergeBlocker | null {
+  if (change.transition.kind !== 'blend') return 'not-a-blend';
+  if (!opts.automixBlend) return 'blend-off';
+  if (opts.reduceMotion) return 'reduce-motion';
+  if (!change.previous?.artUrl || !change.track?.artUrl) return 'no-cover';
+  return null;
+}
+
 /**
  * Should the old and new album covers merge for this song change? Only for a
  * real blend, with both covers known, when blending is on and motion isn't
  * reduced. Lasts as long as the songs overlap.
  */
-export function planCoverMerge(
-  change: {
-    seq: number;
-    track: { key: string; artUrl: string | null } | null;
-    previous: { artUrl: string | null } | null;
-    transition: TransitionInfo;
-  },
-  opts: { automixBlend: boolean; reduceMotion: boolean },
-): CoverMergePlan | null {
+export function planCoverMerge(change: MergeChange, opts: { automixBlend: boolean; reduceMotion: boolean }): CoverMergePlan | null {
   const from = change.previous?.artUrl;
-  if (change.transition.kind !== 'blend' || !opts.automixBlend || opts.reduceMotion) return null;
-  if (!from || !change.track?.artUrl) return null;
+  if (coverMergeBlocker(change, opts) || !from || !change.track) return null;
   return { from, ms: visualTransitionMs(change.transition), seq: change.seq, key: change.track.key };
 }

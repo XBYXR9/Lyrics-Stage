@@ -108,9 +108,14 @@ During a blend:
   (`src/components/Background.tsx`).
 - The player's album cover merges too: the old cover slides aside and fades while the new one slides in over it
   (`planCoverMerge` in `src/lib/transitions.ts`, drawn in `src/components/NowPlaying.tsx`).
-  It is off with Reduce motion, which starts switched on when the system has animations off (Windows: Settings →
-  Accessibility → Visual effects → Animation effects). An explicit "Reduce motion: off" in Settings now wins over the
-  system setting on the main screen (`.calm-ui` in `src/styles/app.css`), and the timing report has a `motion:` line.
+  It is off with Reduce motion, which is also what makes the song change itself quick (250 ms) instead of as long as
+  the overlap, so with it on an Automix change looks abrupt. Reduce motion starts as whatever the computer asks for
+  (Windows: Settings → Accessibility → Visual effects → Animation effects) and is only saved once somebody chooses it in
+  Settings (`settingsToStore` in `src/lib/settings.ts`): before 0.6.9 it was saved along with any other setting, so a
+  moment of "animations off" stayed on for good. An explicit "Reduce motion: off" wins over the system setting on the
+  main screen (`.calm-ui` in `src/styles/app.css`). When a blend happens and a setting is why the covers don't merge, a
+  note says so (`src/lib/motionHint.ts`, shown at most three times), and the timing report logs each change with its
+  animation length and whether the cover merge was on (`coverMergeBlocker`), plus a `motion:` line.
 - A small "Automix blend · 6.2s" badge appears.
 
 **Timing after a blend.** When Spotify moves on by itself with Crossfade or Automix, the position it reports for the new

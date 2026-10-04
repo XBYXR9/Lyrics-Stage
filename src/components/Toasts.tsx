@@ -12,7 +12,7 @@ let nextId = 1;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
-export function toast(text: string, tone: Toast['tone'] = 'info') {
+export function toast(text: string, tone: Toast['tone'] = 'info', ms?: number) {
   const id = nextId++;
   toasts = [...toasts.filter((t) => t.text !== text), { id, text, tone }].slice(-3);
   emit();
@@ -21,7 +21,7 @@ export function toast(text: string, tone: Toast['tone'] = 'info') {
       toasts = toasts.filter((t) => t.id !== id);
       emit();
     },
-    tone === 'error' ? 5000 : 2600,
+    ms ?? (tone === 'error' ? 5000 : 2600),
   );
 }
 

@@ -6,6 +6,7 @@ import { loginStaysInApp, startLogin } from '../lib/auth';
 import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
+import { motionHintText, takeMotionHint } from '../lib/motionHint';
 import { isNativeApp, onNativeBack, setSystemBarsHidden } from '../lib/nativeApp';
 import { describeNudge, nudgeBy } from '../lib/nudge';
 import { showsScene } from '../lib/scene';
@@ -13,7 +14,7 @@ import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
 import { friendlyError } from '../lib/spotify';
 import { appVersion, isWatchingTiming, logTiming, sec } from '../lib/timingLog';
-import { visualTransitionMs } from '../lib/transitions';
+import { coverMergeBlocker, visualTransitionMs } from '../lib/transitions';
 import type { Palette, StyleChoice } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
 import { Background } from './Background';
@@ -233,6 +234,21 @@ export function Stage({
     blendOn ? change.transition : { ...change.transition, kind: 'natural' },
     settings.reduceMotion,
   );
+
+  // For the timing report, and a note when a setting is why the covers don't merge (otherwise it just looks broken).
+  useEffect(() => {
+    if (change.seq === 0) return;
+    const blocker = coverMergeBlocker(change, settings);
+    const systemReduces = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    logTiming(
+      `change #${change.seq} (${change.transition.kind}): song-change animation ${transitionMs} ms${settings.reduceMotion ? ' (Reduce motion is on)' : ''}, cover merge ${
+        blocker ? `off (${blocker})` : showPanel ? 'on' : 'on, but the player panel is hidden (Lyrics only)'
+      }`,
+    );
+    const hint = change.transition.kind === 'blend' ? motionHintText(blocker, systemReduces) : null;
+    if (hint && takeMotionHint()) toast(hint, 'info', 9000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [change.seq]);
 
   // Get the next song's lyrics and colors ready before it starts.
   const next = state.nextTrack;
