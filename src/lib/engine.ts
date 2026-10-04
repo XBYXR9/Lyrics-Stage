@@ -12,6 +12,7 @@ import { getAccessToken } from './auth';
 import { PlaybackClock, type Clock } from './clock';
 import { desktopApi, type LyricsStageDesktopApi } from './desktopTypes';
 import { localIsPlaying, type LocalSnapshot } from './localPlayer';
+import { isRefusal, loadProbeMemory, PROBE_REFRESH_MIN_MS, ProbeMemory, saveProbeMemory, type SilentProbe } from './silentProbes';
 import { loadSdk, sdkPosition, type SdkPlayer, type SdkState, type SdkTrack } from './sdk';
 import { friendlyError, pickImages, spotify, SpotifyError, toTrackInfo, type ApiDevice, type ApiTrack } from './spotify';
 import { isWatchingTiming, logTiming, sec, signedSec, watchTiming } from './timingLog';
@@ -234,6 +235,7 @@ export abstract class BaseEngine {
   private resyncing = false;
   private reportWaiters: ((r: Report) => void)[] = [];
   protected biasLearner = new BlendBiasLearner(loadBiasSamples(), saveBiasSamples);
+  protected probeMemory = new ProbeMemory(loadProbeMemory(), saveProbeMemory);
 
   setResyncAfterBlend(on: boolean) {
     this.resyncEnabled = on;
@@ -241,7 +243,7 @@ export abstract class BaseEngine {
   }
 
   describeBlendBias() {
-    return `${this.resyncEnabled ? 'on' : 'off'} ${this.biasLearner.describe()}`;
+    return `${this.resyncEnabled ? 'on' : 'off'} ${this.biasLearner.describe()} ${this.probeMemory.describe()}`;
   }
 
   /** Can the music be paused and resumed from here, with positions we can believe? Engines turn it on. */
@@ -256,6 +258,10 @@ export abstract class BaseEngine {
   }
   /** Ask for a fresh report soon (the Web API is only asked about once a second). */
   protected askForReport(): void {}
+  /** Quiet ways to make Spotify refresh the position, without pausing (see silentProbes.ts). */
+  protected silentProbes(): SilentProbe[] {
+    return [];
+  }
   /** For the timing report: how the music was paused (e.g. through the Spotify app on this computer). */
   protected resyncPath(): string {
     return '';
@@ -272,7 +278,11 @@ export abstract class BaseEngine {
   private scheduleResync(key: string, transition: TransitionInfo, reported: boolean) {
     this.cancelResync('another song change');
     if (!this.resyncEnabled || !reported || transition.kind !== 'blend' || this.resyncBlocked || !this.canResync()) return;
-    if (this.biasLearner.plan() === 'trust') {
+    // A quiet way that works costs the listener nothing, so it is used on every blend. Pausing is measured only
+    // until the error can be guessed.
+    const works = this.probeMemory.works;
+    const quiet = works !== null && this.silentProbes().some((p) => p.id === works);
+    if (!quiet && this.biasLearner.plan() === 'trust') {
       logTiming(`re-sync skipped: the error is guessed well enough lately (${this.biasLearner.describe()})`);
       return;
     }
@@ -298,46 +308,109 @@ export abstract class BaseEngine {
     });
   }
 
+  /**
+   * Does `act` (which refreshes Spotify's position somehow), waits for Spotify's server to settle, and works out
+   * how far off the reported position was: where the earlier reports said the song would be by now, less the time
+   * the music was silent (`act` returns it), against where Spotify says it is.
+   */
+  private async refreshAndMeasure(before: Report, act: () => Promise<number>): Promise<{ b: number } | null> {
+    const silentMs = await act();
+    const doneAt = performance.now();
+    this.askForReport();
+    const report = await this.nextReport(doneAt + RESYNC_SETTLE_MS, RESYNC_SETTLE_MS + RESYNC_REPORT_TIMEOUT_MS);
+    if (!report) return null;
+    const expected = before.pos + (report.at - before.at);
+    return { b: Math.round(expected - silentMs - report.pos) };
+  }
+
+  /** Writes down what a re-sync measured, and learns from it. */
+  private learnFrom(plan: { first: number; old: number }, b: number, how: string) {
+    const rule = this.biasLearner.trustedRule();
+    logTiming(
+      `RE-SYNC measured error=${signedSec(b)}s ${how} (guessed first-report=${sec(plan.first)}s, old-song=${sec(plan.old)}s; trusted before: ${rule ?? 'none'})`,
+    );
+    if (b > RESYNC_MAX_AHEAD_MS || b < -RESYNC_MAX_BEHIND_MS) return logTiming('re-sync: that does not look right, not learning from it');
+    this.biasLearner.record({ b, first: plan.first, old: plan.old });
+    logTiming(`learned: ${this.biasLearner.describe()}`);
+  }
+
   private async resync() {
     const plan = this.resyncPlan;
     this.resyncPlan = null;
     if (!plan || this.resyncing) return;
     const track = this.state.track;
-    const before = this.lastReport;
     const skip = (why: string) => logTiming(`re-sync skipped: ${why}`);
-    if (!this.resyncEnabled || !this.canResync()) return skip('not possible now');
-    if (!track || track.key !== plan.key) return skip('the song changed');
-    if (this.state.status !== 'playing' || !this.clock.playing || !before?.playing) return skip('the music is not playing');
-    if (track.durationMs - this.clock.now() < RESYNC_MIN_REMAINING_MS) return skip('the song is nearly over');
+    const ready = () => {
+      if (!this.resyncEnabled || !this.canResync()) return 'not possible now';
+      if (!track || this.state.track?.key !== plan.key) return 'the song changed';
+      if (this.state.status !== 'playing' || !this.clock.playing || !this.lastReport?.playing) return 'the music is not playing';
+      if (track.durationMs - this.clock.now() < RESYNC_MIN_REMAINING_MS) return 'the song is nearly over';
+      return null;
+    };
+    const notReady = ready();
+    if (notReady) return skip(notReady);
 
     this.resyncing = true;
+    let tested: string | null = null;
+    let gapForLog = 0;
+    const startedAt = performance.now();
+    const interrupted = () => this.lastUserActionAt >= startedAt;
     try {
-      const sentAt = performance.now();
-      await this.sendPause();
-      // Spotify refreshes its state now: from here on, take reports as they are.
-      this.positionBiasMs = 0;
-      try {
-        await this.sendResume();
-      } catch {
-        await this.sendResume(); // never leave the music paused because of us
+      // 1. A quiet way first, if there is one: no gap in the music at all.
+      const probes = this.silentProbes();
+      const id = this.probeMemory.pick(probes.map((p) => p.id));
+      if (id) {
+        const probe = probes.find((p) => p.id === id)!;
+        const known = this.probeMemory.works === id;
+        try {
+          const m = await this.refreshAndMeasure(this.lastReport!, async () => {
+            await probe.run();
+            return 0;
+          });
+          if (interrupted()) return logTiming('re-sync: you changed the playback meanwhile, so nothing is learned from it');
+          if (m && (known || Math.abs(m.b) >= PROBE_REFRESH_MIN_MS)) {
+            // Spotify reported a different position afterwards, so the quiet attempt refreshed it.
+            if (!known) this.probeMemory.markWorks(id);
+            this.positionBiasMs = 0;
+            return this.learnFrom(plan, m.b, `quietly, without pausing (${id})`);
+          }
+          if (!known) {
+            this.probeMemory.noteTried(id);
+            tested = id;
+          }
+          logTiming(`quiet re-sync (${id}): ${m ? `the position did not change (${signedSec(m.b)}s)` : 'Spotify did not report'}; pausing instead`);
+        } catch (err) {
+          if (isRefusal(err)) this.probeMemory.markFailed(id);
+          logTiming(`quiet re-sync (${id}) failed: ${err instanceof Error ? err.message : String(err)}${isRefusal(err) ? '; will not try it again' : ''}; pausing instead`);
+        }
+        const stillReady = ready();
+        if (stillReady) return skip(stillReady);
       }
-      const resumedAt = performance.now();
-      // The music was silent from about the middle of the pause request to the middle of the resume request.
-      const gapMs = (resumedAt - sentAt) / 2;
-      this.askForReport();
-      const report = await this.nextReport(resumedAt + RESYNC_SETTLE_MS, RESYNC_SETTLE_MS + RESYNC_REPORT_TIMEOUT_MS);
-      if (!report) return logTiming('re-sync: Spotify did not report after the pause');
-      // Where the old reports said the song would be by now, had the music not stopped, against where it really is.
-      const expected = before.pos + (report.at - before.at);
-      const b = Math.round(expected - gapMs - report.pos);
-      const rule = this.biasLearner.trustedRule();
-      logTiming(
-        `RE-SYNC measured error=${signedSec(b)}s (guessed first-report=${sec(plan.first)}s, old-song=${sec(plan.old)}s; ` +
-          `paused for about ${sec(gapMs)}s${this.resyncPath()}; trusted before: ${rule ?? 'none'})`,
-      );
-      if (b > RESYNC_MAX_AHEAD_MS || b < -RESYNC_MAX_BEHIND_MS) return logTiming('re-sync: that does not look right, not learning from it');
-      this.biasLearner.record({ b, first: plan.first, old: plan.old });
-      logTiming(`learned: ${this.biasLearner.describe()}`);
+
+      // 2. Pause and resume the music for a split second.
+      const m = await this.refreshAndMeasure(this.lastReport!, async () => {
+        const sentAt = performance.now();
+        await this.sendPause();
+        // Spotify refreshes its state now: from here on, take reports as they are.
+        this.positionBiasMs = 0;
+        try {
+          await this.sendResume();
+        } catch {
+          await this.sendResume(); // never leave the music paused because of us
+        }
+        // The music was silent from about the middle of the pause request to the middle of the resume request.
+        const gapMs = (performance.now() - sentAt) / 2;
+        gapForLog = gapMs;
+        return gapMs;
+      });
+      if (!m) return logTiming('re-sync: Spotify did not report after the pause');
+      if (interrupted()) return logTiming('re-sync: you changed the playback meanwhile, so nothing is learned from it');
+      // The quiet attempt showed nothing but the pause did: that quiet way doesn't work.
+      if (tested && Math.abs(m.b) >= PROBE_REFRESH_MIN_MS) {
+        this.probeMemory.markFailed(tested);
+        logTiming(`the quiet way (${tested}) does not refresh Spotify's position here; it won't be tried again`);
+      }
+      this.learnFrom(plan, m.b, `by pausing for about ${sec(gapForLog)}s${this.resyncPath()}`);
     } catch (err) {
       // 403: Spotify doesn't allow it (no Premium, or this device can't be controlled): no point in trying again.
       if ((err as { status?: number })?.status === 403) this.resyncBlocked = true;
@@ -347,9 +420,16 @@ export abstract class BaseEngine {
     }
   }
 
+  /** When you last pressed play, pause, next, previous or sought from here: a change of position then isn't Spotify refreshing itself. */
+  private lastUserActionAt = -Infinity;
+  protected noteUserAction() {
+    this.lastUserActionAt = performance.now();
+  }
+
   /** Spotify's state is refreshed by a seek, so the blend length no longer applies. */
   protected clearPositionBias() {
     this.positionBiasMs = 0;
+    this.noteUserAction();
     if (!this.resyncing) this.cancelResync('you sought');
   }
 
@@ -538,6 +618,44 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   protected askForReport() {
     this.pokeSoon(200);
   }
+  /** What Spotify last said about the repeat mode (a quiet attempt changes it for a moment and puts it back). */
+  private repeatState: 'off' | 'context' | 'track' | null = null;
+  protected silentProbes(): SilentProbe[] {
+    const probes: SilentProbe[] = [];
+    // A nudge of the volume by one step, and back: too small to hear, and the player answers it.
+    const volume = this.state.volume;
+    if (volume !== null && !this.volumeSettling()) {
+      probes.push({
+        id: 'volume',
+        run: async () => {
+          this.volumeChangedAt = performance.now();
+          await spotify.volume(volume < 100 ? volume + 1 : volume - 1);
+          try {
+            await spotify.volume(volume);
+          } catch {
+            await spotify.volume(volume); // always put it back
+          }
+          this.volumeChangedAt = performance.now();
+        },
+      });
+    }
+    // The repeat mode changed to another and back, within a moment.
+    const repeat = this.repeatState;
+    if (repeat) {
+      probes.push({
+        id: 'repeat',
+        run: async () => {
+          await spotify.repeat(repeat === 'off' ? 'context' : 'off');
+          try {
+            await spotify.repeat(repeat);
+          } catch {
+            await spotify.repeat(repeat); // always put it back
+          }
+        },
+      });
+    }
+    return probes;
+  }
   protected resyncPath() {
     return this.resyncVia === 'local' ? ', through the Spotify app on this computer' : ', through Spotify’s servers';
   }
@@ -640,6 +758,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
       return;
     }
     const device = this.mapDevice(res.device);
+    if (res.repeat_state === 'off' || res.repeat_state === 'context' || res.repeat_state === 'track') this.repeatState = res.repeat_state;
     if (this.sdkActive && device.isThisBrowser) {
       // The SDK is the better source for this device; only refresh device info.
       this.update({ device });
@@ -809,6 +928,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   // --------------------------------------------------------------- controls
 
   async togglePlay() {
+    this.noteUserAction();
     const wasPlaying = this.state.isPlaying;
     this.clock.set(this.clock.now(), !wasPlaying);
     this.update({ isPlaying: !wasPlaying, status: !wasPlaying ? 'playing' : 'paused' });
@@ -825,6 +945,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   }
 
   async next() {
+    this.noteUserAction();
     try {
       await spotify.next();
     } finally {
@@ -833,6 +954,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   }
 
   async previous() {
+    this.noteUserAction();
     try {
       await spotify.previous();
     } finally {

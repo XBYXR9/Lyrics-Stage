@@ -314,7 +314,9 @@ export function SettingsPanel({
             Spotify was, and learns from it. Once it can tell how far off Spotify will be (after about two blends), it
             stops pausing the music and just takes that off, checking again less and less often. In the desktop app,
             when the Spotify app on this computer is playing, it pauses that app directly, which makes the gap much
-            shorter. Needs Spotify Premium. Switch it off if you don’t want the music touched.
+            shorter. It also tries quiet ways first (a one-step volume nudge and back, a repeat-mode change and
+            back) and keeps using one if Spotify refreshes its position from it, so nothing is paused at all.
+            Needs Spotify Premium. Switch it off if you don’t want the music touched.
           </p>
           <p className="hint">
             <b>Turn on Automix:</b> in the Spotify app, click your profile picture → <b>Settings</b> → <b>Playback</b> →

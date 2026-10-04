@@ -171,6 +171,9 @@ export const spotify = {
   /** Needs Premium, and a device that allows volume control. */
   volume: (percent: number) => request('/me/player/volume', { method: 'PUT', query: { volume_percent: Math.round(percent) } }),
 
+  /** Needs Premium. state: "off", "context" (the playlist or album) or "track". */
+  repeat: (state: 'off' | 'context' | 'track') => request('/me/player/repeat', { method: 'PUT', query: { state } }),
+
   transfer: (deviceId: string, play = true) =>
     request('/me/player', { method: 'PUT', body: { device_ids: [deviceId], play } }),
 };
