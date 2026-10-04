@@ -80,8 +80,11 @@ the app tells you.
 
 **Building it in (for whoever publishes the app):** set a repository variable named `SPOTIFY_CLIENT_ID` (GitHub →
 Settings → Secrets and variables → Actions → Variables) to your Spotify app's Client ID. Release builds then include it,
-and people only click **Sign in with Spotify**. Client IDs aren't secret. Spotify still only lets the accounts listed
-under User Management sign in, so others can paste their own Client ID via **Use a different Client ID**.
+and people only click **Sign in with Spotify**. Client IDs aren't secret. Spotify only lets up to 5 accounts (listed
+under User Management) use an app like this, and only gives more to registered companies with 250,000+ monthly users.
+So the start screen of such a version says so, and anyone else pastes their own Client ID via **Use a different
+Client ID**. A person who isn't on the list is told this in plain words instead of being asked to edit your dashboard.
+The desktop app's default mode (following the Spotify app on the computer) needs no Client ID at all.
 
 ## Turn on Automix
 

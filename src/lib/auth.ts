@@ -56,9 +56,19 @@ export function redirectUri(): string {
 /** Does the login finish without leaving the page (the desktop app and the Android app wait for the browser)? */
 export const loginStaysInApp = () => !!desktopApi() || isNativeApp();
 
+const builtInClientId = () => (import.meta.env.VITE_SPOTIFY_CLIENT_ID as string | undefined)?.trim() ?? '';
+
 export function getClientId(): string {
-  const fromEnv = (import.meta.env.VITE_SPOTIFY_CLIENT_ID as string | undefined)?.trim();
-  return read(KEY_CLIENT_ID) || fromEnv || '';
+  return read(KEY_CLIENT_ID) || builtInClientId();
+}
+
+/**
+ * Is the Client ID in use the one built into this version of the app (the publisher's Spotify app)? Spotify only
+ * lets a handful of accounts use such an app, so for everybody else a Client ID of their own is the way.
+ */
+export function usesBuiltInClientId(): boolean {
+  const builtIn = builtInClientId();
+  return builtIn !== '' && getClientId() === builtIn;
 }
 
 export function setClientId(id: string) {

@@ -1,7 +1,7 @@
 // First screen: explains how to connect Spotify in a few simple steps, or try the demo.
 // The desktop app shows it too, when you choose "Sign in with Spotify".
 import { useState } from 'react';
-import { getClientId, loginStaysInApp, redirectUri, setClientId, startLogin } from '../lib/auth';
+import { getClientId, loginStaysInApp, redirectUri, setClientId, startLogin, usesBuiltInClientId } from '../lib/auth';
 import { desktopApi } from '../lib/desktopTypes';
 import { cancelNativeSignIn, isNativeApp } from '../lib/nativeApp';
 
@@ -150,6 +150,12 @@ export function Setup({
             <button className="btn primary wide" onClick={connect}>
               {desktop || phone ? 'Sign in with Spotify' : 'Connect Spotify'}
             </button>
+            {usesBuiltInClientId() && (
+              <p className="fine">
+                This version signs in with the app publisher’s Spotify app, which only has room for a few accounts. If
+                Spotify says your account isn’t on the list, use a Client ID of your own (it’s free).
+              </p>
+            )}
             <button className="link" onClick={() => setEditing(true)}>
               Use a different Client ID
             </button>

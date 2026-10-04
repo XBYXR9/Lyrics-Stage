@@ -1,5 +1,5 @@
 // Small wrapper around the Spotify Web API endpoints this app needs.
-import { getAccessToken, isLoggedIn } from './auth';
+import { getAccessToken, isLoggedIn, usesBuiltInClientId } from './auth';
 import type { TrackInfo } from './types';
 
 const API = 'https://api.spotify.com/v1';
@@ -24,7 +24,9 @@ export function friendlyError(err: unknown): string {
     if (err.reason === 'VOLUME_CONTROL_DISALLOW') return 'This Spotify device doesn’t let apps change its volume.';
     // Development-mode Spotify apps only allow the accounts listed under User Management.
     if (err.status === 403 && /not be registered|not registered/i.test(err.message))
-      return 'This Spotify account isn’t on the Spotify app’s user list yet. Add its email under User Management in the Spotify Developer Dashboard.';
+      return usesBuiltInClientId()
+        ? 'This Spotify account isn’t on the list of the Spotify app built into this version, which only has room for a few people. Ask whoever made the app to add your email, or sign in with a Client ID of your own (free): disconnect, then choose “Use a different Client ID”.'
+        : 'This Spotify account isn’t on the Spotify app’s user list yet. Add its email under User Management in the Spotify Developer Dashboard.';
     if (err.reason === 'PREMIUM_REQUIRED' || err.status === 403)
       return 'Spotify only allows controlling playback with a Premium account.';
     if (err.status === 401) return 'Your Spotify login expired. Please connect again.';
