@@ -298,9 +298,10 @@ export function SettingsPanel({
             label="Keep lyrics in time after a blend"
           />
           <p className="hint">
-            After Spotify mixes into the next song by itself, it can report the song position ahead by the length of the
-            blend, so the lyrics run early until you pause or seek. This takes that off for you. If the lyrics come
-            late after a blend instead, switch it off.
+            After Spotify mixes into the next song by itself, it can report the song position a little ahead (about a
+            second on a real setup), so the lyrics run early until Spotify refreshes it. This takes off what the app
+            has measured on earlier blends (nothing until it has measured one). If the lyrics come late after a
+            blend instead, switch it off.
           </p>
           <Toggle
             checked={settings.resyncAfterBlend}

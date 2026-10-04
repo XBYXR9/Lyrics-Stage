@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../auth', () => ({ getAccessToken: async () => 'token', isLoggedIn: () => true }));
+vi.mock('../auth', () => ({ getAccessToken: async () => 'token', isLoggedIn: () => true, usesBuiltInClientId: () => false }));
 
 import { spotify } from '../spotify';
 

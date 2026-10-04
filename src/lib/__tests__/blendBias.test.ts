@@ -119,6 +119,47 @@ describe('BlendBiasLearner', () => {
     expect(l.describe()).toContain('trusted=');
   });
 
+  it('trusts a steady error of about a second, which is what a real Windows PC with Automix measured', () => {
+    // measured on seven blends: the blend lasted 9.5 to 12 s and the new song started 8 to 136 s in, so neither guess fits
+    const real: [number, number, number][] = [
+      [1200, 59300, 12000],
+      [700, 114300, 12000],
+      [1400, 136000, 12000],
+      [1300, 135200, 12000],
+      [-400, 15800, 12000],
+      [800, 8700, 12000],
+      [900, 20800, 9500],
+    ];
+    const l = new BlendBiasLearner();
+    const trusted: (string | null)[] = [];
+    for (const [b, first, old] of real) {
+      l.record(sample(b, first, old));
+      trusted.push(l.trustedRule());
+    }
+    expect(trusted.slice(0, 2)).toEqual([null, null]);
+    expect(trusted[3]).toBe('recent'); // after four blends it can tell
+    expect(trusted[4]).toBeNull(); // the -0.4 s one doesn't fit
+    expect(trusted[6]).toBe('recent'); // and again after two more
+    // what it takes off for the next blend: about a second, not the 9.5 s the old song had left
+    expect(l.recentBias()).toBeGreaterThan(700);
+    expect(l.recentBias()).toBeLessThan(1200);
+  });
+
+  it('says what the latest measurements say, and nothing before the first one', () => {
+    const l = new BlendBiasLearner();
+    expect(l.recentBias()).toBeNull();
+    l.record(sample(1000, 0, 0));
+    expect(l.recentBias()).toBe(1000);
+    for (const b of [900, 1100, 5000, 1000]) l.record(sample(b, 0, 0));
+    expect(l.recentBias()).toBe(1050); // the middle of the last four: 900, 1100, 5000, 1000 → 1000 and 1100
+  });
+
+  it('does not let one wild measurement drag the guess away', () => {
+    const l = new BlendBiasLearner();
+    for (const b of [1000, 900, 9000, 1100]) l.record(sample(b, 0, 0));
+    expect(l.recentBias()).toBeLessThan(1500);
+  });
+
   it('survives a browser without storage', () => {
     expect(loadBiasSamples()).toEqual([]);
   });

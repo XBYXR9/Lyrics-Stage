@@ -175,6 +175,22 @@ describe('re-syncing after a blend', () => {
     expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
   });
 
+  it('is not 11 s late during the first seconds of a blend: the blend length is not the error (a real Windows PC with Automix)', async () => {
+    // What a real timing report showed: the blend lasted 12 s, and Spotify's position was ahead by about a second.
+    const w = new World();
+    const engine = new TestEngine(w);
+    const B = song('B');
+    await blend(engine, song('A'), B, { ahead: 1000, leftMs: 12_000 });
+    expect(engine.getState().change.transition.overlapMs).toBeGreaterThan(11_000);
+    await run(engine, B, 4000); // before the re-sync, which comes 6 s after the blend
+    expect(w.pauses).toBe(0);
+    expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(1300); // about the second Spotify is ahead, not 12 s behind
+    // and the re-sync finds that second, and from then on the lyrics are in time
+    await run(engine, B, 8000);
+    expect(timingReport([])).toMatch(/RE-SYNC measured error=\+[01]\.\ds/);
+    expect(Math.abs(engine.clock.now() - w.truth())).toBeLessThan(400);
+  });
+
   it('keeps the lyrics in time through the pause, whatever the error was', async () => {
     for (const ahead of [2500, 6000, 9500]) {
       const w = new World();

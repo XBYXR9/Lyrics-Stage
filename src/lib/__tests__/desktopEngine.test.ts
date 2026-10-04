@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesktopEngine } from '../desktopEngine';
 import type { DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi } from '../desktopTypes';
+import { BlendBiasLearner } from '../blendBias';
 import { clearTimingLog, timingReport } from '../timingLog';
 
 function fakeApi() {
@@ -199,6 +200,18 @@ describe('DesktopEngine', () => {
   });
 });
 
+/** Gives an engine what it would have learned from earlier blends (see blendBias.ts). */
+function teach(engine: DesktopEngine, samples: { b: number; first: number; old: number }[]) {
+  const learner = (engine as unknown as { biasLearner: BlendBiasLearner }).biasLearner;
+  samples.forEach((s) => learner.record(s));
+}
+
+/** Two blends where what was left of the old song (5.9 s) was the error, as with a Crossfade of that length. */
+const LEARNED_BLEND_LENGTH = [
+  { b: 5900, first: 14000, old: 5875 },
+  { b: 5800, first: 13900, old: 5900 },
+];
+
 describe('Spotify reporting the position ahead after a blend', () => {
   let now = 0;
   beforeEach(() => {
@@ -223,16 +236,17 @@ describe('Spotify reporting the position ahead after a blend', () => {
    * Song A is 6 s from its end when Spotify mixes into Song B, whose audio starts 8 s in (Automix skips the
    * intro). From then on Spotify reports Song B's position ahead by the length of the blend.
    */
-  function blendIntoB() {
+  function blendIntoB(learned: { b: number; first: number; old: number }[] = LEARNED_BLEND_LENGTH, ahead = 5875) {
     const { api, emit } = fakeApi();
     const engine = new DesktopEngine(api);
+    teach(engine, learned);
     engine.start();
     emit(snap({ positionMs: 190_000 }));
     now += 4000;
     emit(snap({ positionMs: 194_000 }));
     now += 250;
     // The audio of Song B is at 8 s right now.
-    emit(snap({ track: track('Song B'), positionMs: 8_000 + 5875 }));
+    emit(snap({ track: track('Song B'), positionMs: 8_000 + ahead }));
     const overlap = engine.getState().change.transition.overlapMs;
     let truth = 8_000;
     /** Time passes; Spotify reports `truth + ahead`. */
@@ -246,7 +260,7 @@ describe('Spotify reporting the position ahead after a blend', () => {
     return { engine, emit, overlap, play, truth: () => truth, setTruth: (v: number) => (truth = v) };
   }
 
-  it('takes the length of the blend off, so the lyrics stay in time', () => {
+  it('takes off the blend length once earlier blends showed that to be the error, so the lyrics stay in time', () => {
     const b = blendIntoB();
     expect(b.engine.getState().change.transition.kind).toBe('blend');
     expect(b.overlap).toBe(5875);
@@ -255,9 +269,34 @@ describe('Spotify reporting the position ahead after a blend', () => {
     b.engine.stop();
   });
 
+  it('takes nothing off before it has measured anything: the blend length is not the error', () => {
+    // On a real setup the blend lasted 9.5 to 12 s, and Spotify's error was about a second. Taking the blend length off made
+    // the lyrics 11 s late.
+    const b = blendIntoB([], 1000);
+    expect(b.overlap).toBeGreaterThan(5000);
+    b.play(8000, 1000);
+    expect(Math.abs(b.engine.clock.now() - (b.truth() + 1000))).toBeLessThan(300); // follows what Spotify says
+    b.engine.stop();
+  });
+
+  it('takes off what earlier blends measured, which was about a second', () => {
+    const b = blendIntoB(
+      [
+        { b: 1200, first: 59_300, old: 12_000 },
+        { b: 800, first: 8_700, old: 12_000 },
+        { b: 1000, first: 20_800, old: 9_500 },
+      ],
+      1000,
+    );
+    b.play(8000, 1000);
+    expect(Math.abs(b.engine.clock.now() - b.truth())).toBeLessThan(300);
+    b.engine.stop();
+  });
+
   it('can be switched off', () => {
     const { api, emit } = fakeApi();
     const engine = new DesktopEngine(api);
+    teach(engine, LEARNED_BLEND_LENGTH);
     engine.setBlendTimingFix(false);
     engine.start();
     emit(snap({ positionMs: 190_000 }));
@@ -348,6 +387,7 @@ describe('Spotify reporting the position ahead after a blend', () => {
     clearTimingLog();
     const { api, emit } = fakeApi();
     const engine = new DesktopEngine(api);
+    teach(engine, LEARNED_BLEND_LENGTH);
     engine.start();
     const A = track('Song A', 200_000);
     const B = track('Song B', 180_000);

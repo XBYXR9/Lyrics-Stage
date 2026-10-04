@@ -13,8 +13,11 @@ export interface SilentProbe {
   run: () => Promise<void>;
 }
 
-/** A change in the reported position of at least this much (ms) shows that Spotify refreshed it. */
-export const PROBE_REFRESH_MIN_MS = 800;
+/**
+ * A change in the reported position of at least this much (ms) shows that Spotify refreshed it. On a real setup
+ * the error was only 0.4 to 1.4 s, so this is lower than the jitter of the reports can fake (about 0.2 s).
+ */
+export const PROBE_REFRESH_MIN_MS = 500;
 
 /** How often one quiet way is tried in one run of the app while it shows nothing (the blend may simply have had no error). */
 const MAX_TRIES = 2;

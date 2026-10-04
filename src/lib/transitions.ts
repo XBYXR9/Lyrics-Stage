@@ -27,6 +27,7 @@ export const MAX_BLEND_MS = 12000;
 const SKIP_REMAINING_MS = 14000;
 const NATURAL_REMAINING_MS = 900;
 const OFFSET_START_MS = 1800;
+const MAX_BLEND_START_MS = 60_000;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -38,6 +39,10 @@ export function classifyTransition(o: SwitchObservation): TransitionInfo {
   // Did the new song start part-way in? If it had started at 0 it could be at
   // most `sinceLastReportMs` in by now.
   const startedLate = o.newPositionMs > o.sinceLastReportMs + OFFSET_START_MS;
+  // Automix starts the next song a few seconds in (8 to 21 s were seen), not minutes: that is somebody seeking.
+  if (startedLate && o.newPositionMs > MAX_BLEND_START_MS) {
+    return { kind: 'skip', overlapMs: 0, startOffsetMs: Math.max(0, o.newPositionMs - o.sinceLastReportMs / 2) };
+  }
   const sinceSwitch = startedLate ? o.sinceLastReportMs / 2 : Math.min(o.newPositionMs, o.sinceLastReportMs);
   const startOffsetMs = Math.max(0, o.newPositionMs - sinceSwitch);
 

@@ -464,12 +464,13 @@ export abstract class BaseEngine {
           })
         : { kind: 'initial', overlapMs: 0, startOffsetMs: reportedMs };
       this.lastLeft = prev ? { key: prev.key, name: prev.name, pos: this.clock.raw(measuredAt), at: measuredAt, durationMs: prev.durationMs } : null;
-      // The blend length (how much of the old song was left) unless the app has learned a better guess.
-      const rule = this.biasLearner.trustedRule() ?? 'old-song';
-      this.positionBiasMs =
-        reported && this.fixBlendTiming && transition.kind === 'blend'
-          ? Math.max(0, ruleValue(rule, { first: transition.startOffsetMs, old: transition.overlapMs }))
-          : 0;
+      // What the app has measured on earlier blends (nothing before the first measurement), or a guess that has
+      // been right lately. The blend length is not taken off by default: measured on a real setup, Spotify's
+      // error was about a second while the blend lasted 9.5 to 12 s, so that made the lyrics 11 s late.
+      const recent = this.biasLearner.recentBias() ?? 0;
+      const rule = this.biasLearner.trustedRule();
+      const guess = rule ? ruleValue(rule, { first: transition.startOffsetMs, old: transition.overlapMs, recent }) : recent;
+      this.positionBiasMs = reported && this.fixBlendTiming && transition.kind === 'blend' ? Math.max(0, guess) : 0;
       const positionMs = Math.max(0, reportedMs - this.positionBiasMs);
       logTiming(
         `CHANGE ${this.kind}: "${prev?.name ?? '-'}" (clock ${sec(clockBefore)} of ${sec(prev?.durationMs)}) -> "${track.name}" (length ${sec(track.durationMs)}) ` +

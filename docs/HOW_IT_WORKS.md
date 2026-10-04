@@ -111,12 +111,20 @@ During a blend:
 - A small "Automix blend · 6.2s" badge appears.
 
 **Timing after a blend.** When Spotify moves on by itself with Crossfade or Automix, the position it reports for the new
-song is ahead by the length of the blend, until the next pause, resume or seek refreshes it (a known Spotify quirk,
-also seen through AppleScript). Left alone, the lyrics run early for the rest of the song. So after a `blend`,
-`BaseEngine.observe` takes the blend length (`overlapMs`) off every report. It stops as soon as Spotify refreshes
-itself: a pause or resume, a seek (here or from another device), or a jump in the reports of more than about 60% of the
-blend length. Skips and natural song endings are never touched, and a song whose position we count ourselves
-(Linux) has nothing to correct. Settings → Song transitions → *Keep lyrics in time after a blend* switches it off.
+song can be ahead of the audio until the next pause, resume or seek (or a quiet refresh, see below) makes Spotify refresh
+it (a known Spotify quirk, also seen through AppleScript). Left alone, the lyrics run early for the rest of the song.
+
+*How far ahead?* Versions 0.5.2 to 0.6.6 assumed "by the length of the blend", and took that off every report. A real
+timing report (a Windows PC, Automix, seven measured blends) showed otherwise: Spotify was ahead by **0.4 to 1.4 s**
+(about a second), while the blend lasted 9.5 to 12 s. Taking 12 s off made the lyrics about 11 s late until the re-sync
+ran, and then they jumped forward. So now, after a `blend`, `BaseEngine.observe` takes off only what the app has
+**measured** on earlier blends (the middle value of the last four, `BlendBiasLearner.recentBias()`; nothing before the
+first measurement), or a guess that has proven right on the last two blends (`old-song` is still such a guess, for a
+Crossfade of fixed length). It stops as soon as Spotify refreshes itself: a pause or resume, a seek (here or from another
+device), or a jump in the reports of more than 0.8 to 1.5 s. Skips and natural song endings are never touched, a new
+song that shows up minutes in is taken for somebody seeking (Automix was seen starting the next song 8 to 21 s in), and
+a song whose position we count ourselves (Linux) has nothing to correct. Settings → Song transitions → *Keep lyrics in
+time after a blend* switches it off.
 
 **Re-sync after a blend (`BaseEngine.resync`, `src/lib/blendBias.ts`).** Spotify's own apps have this bug too: after a
 blend, the position of the new song stays wrong until Spotify refreshes it, and people fix it by seeking or by pausing
@@ -126,7 +134,8 @@ second (the Web API's pause and play, or the Spotify app's own commands in the d
 server to settle, and compares the position it then reports with where the earlier reports said the song would be. The
 difference is the real error; from then on the lyrics follow Spotify's refreshed reports. Each measurement is stored
 next to the two guesses made when the blend was seen (`first-report`: the position of the new song when it showed up;
-`old-song`: how much of the old song was left). When one guess has been right on the last two blends, the app uses it
+`old-song`: how much of the old song was left; and `recent`: what the last few blends measured). When one guess has
+been right on the last two blends, the app uses it
 and stops pausing the music. It checks again after 2 blends, then 4, 8 and 16 as long as the checks pass (the music is
 paused less and less); a check that fails starts the measuring again. In the desktop app signed in to Spotify, when the
 Spotify app on this computer has just reported that it is playing exactly this song (`src/lib/localPlayer.ts`), the
@@ -137,7 +146,7 @@ in the music a fraction of a second shorter; the timing report says which way wa
 Spotify's player publish a fresh state too: nudging the volume one step and back, and changing the repeat mode to
 another and back (`SpotifyEngine.silentProbes`). Nobody knows if the player answers those with a fresh position, so the
 app finds out by itself: after a quiet attempt it waits 2 s and looks at what Spotify reports. If the position jumped
-by 0.8 s or more, that way works: it is remembered (kept in the browser) and used on every blend from then on, with no
+by 0.5 s or more, that way works: it is remembered (kept in the browser) and used on every blend from then on, with no
 pause at all. If nothing changed, it pauses and resumes as before, and if that shows an error the quiet attempt didn't
 find, the quiet way is written off (and the next one is tried on the next blend). A blend with no error to find teaches
 nothing about a quiet way. Spotify refusing it (400, 403, 404) writes it off at once; a network hiccup doesn't. Both
