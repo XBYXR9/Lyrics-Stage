@@ -1512,13 +1512,22 @@ kbd {
   }
 }
 
+/* When the system asks for less motion, nothing moves, except on the main screen, where the app's own Reduce motion
+   switch decides (it starts switched on in that case, and someone who switched it off wants the movement). */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :not(.stage:not(.calm-ui) *),
+  :not(.stage:not(.calm-ui) *)::before,
+  :not(.stage:not(.calm-ui) *)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+.calm-ui,
+.calm-ui *,
+.calm-ui *::before,
+.calm-ui *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
 }
 
 /* ---------- Desktop app ---------- */

@@ -146,10 +146,19 @@ const STALE_REPORT_WINDOW_MS = 14_000;
 const STALE_REPORT_TOLERANCE_MS = 4000;
 
 /**
- * A change in the reported position (beyond normal playing) bigger than this means Spotify refreshed its state:
- * a good part of the blend length, but never less than a normal bit of network jitter.
+ * The first answers about a new song can be stale: the very first one may still show where the song started (a real
+ * report: 21.1 s while the Spotify app on the same PC said 25.5 s), and the next one then catches up. That is not Spotify
+ * refreshing itself or somebody seeking, so for this long after a song change a step forward in the reports is ignored.
  */
-const biasResetJumpMs = (biasMs: number) => Math.max(800, Math.min(1500, biasMs * 0.6));
+const CHANGE_SETTLE_MS = 4000;
+/** A jump of this much (forward or back) in what Spotify reports is a seek. */
+const SEEK_JUMP_MS = 2500;
+/**
+ * Spotify refreshing its state shows as the reported position stepping back by about the error we take off (the real
+ * ones were 0.4 to 1.4 s), and never by less than this, which is more than the jitter of the reports (about 0.2 s).
+ * A step forward is not a refresh.
+ */
+const REFRESH_STEP_BACK_MS = 450;
 
 /** How long after a blend to re-sync: the songs are no longer overlapping, and the new song's lyrics are about to start. */
 const RESYNC_DELAY_MS = 6000;
@@ -495,18 +504,21 @@ export abstract class BaseEngine {
     } else {
       // A pause or resume, or a jump in what Spotify reports (a seek, from here or another device), means it
       // refreshed its state: the position is right again, so stop taking the blend length off.
+      // Where the last report said we would be by now, and how far the new one is from that. A step forward in the
+      // first seconds after a song change is a stale first answer catching up, not a seek.
+      const settling = performance.now() - this.lastChangeAt < CHANGE_SETTLE_MS;
+      const jump = last ? reportedMs - (last.playing ? last.pos + (measuredAt - last.at) : last.pos) : 0;
+      const forwardSeek = jump >= SEEK_JUMP_MS && !settling;
       if (this.resyncPlan && !this.resyncing && last) {
-        const expected = last.playing ? last.pos + (measuredAt - last.at) : last.pos;
-        if (playing !== last.playing || Math.abs(reportedMs - expected) > 1500) this.cancelResync('Spotify was paused, resumed or sought by someone else');
+        if (playing !== last.playing || forwardSeek || jump <= -SEEK_JUMP_MS) this.cancelResync('Spotify was paused, resumed or sought by someone else');
       }
       if (this.positionBiasMs > 0 && last) {
-        const expected = last.playing ? last.pos + (measuredAt - last.at) : last.pos;
         const why = !reported
           ? 'not reported'
           : playing !== last.playing
             ? 'pause or resume'
-            : Math.abs(reportedMs - expected) > biasResetJumpMs(this.positionBiasMs)
-              ? `jump of ${signedSec(reportedMs - expected)}`
+            : forwardSeek || jump <= -Math.max(REFRESH_STEP_BACK_MS, this.positionBiasMs * 0.5)
+              ? `jump of ${signedSec(jump)}`
               : '';
         if (why) {
           logTiming(`bias ${sec(this.positionBiasMs)} dropped: ${why}`);
