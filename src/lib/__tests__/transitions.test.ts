@@ -40,6 +40,21 @@ describe('classifyTransition', () => {
     expect(t.overlapMs).toBeLessThanOrEqual(MAX_BLEND_MS);
   });
 
+  it('still sees Automix starting the next song 8 to 21 s in (what a real setup showed)', () => {
+    for (const start of [8_700, 15_800, 20_800]) {
+      const t = classifyTransition({ ...base, sinceLastReportMs: 1100, prevPositionMs: 192_700, newPositionMs: start });
+      expect(t.kind).toBe('blend');
+    }
+  });
+
+  it('takes a new song that shows up minutes in for somebody seeking, not for an Automix start', () => {
+    for (const start of [75_000, 165_500, 331_700]) {
+      const t = classifyTransition({ ...base, sinceLastReportMs: 1100, prevPositionMs: 35_800, newPositionMs: start });
+      expect(t.kind).toBe('skip');
+      expect(t.overlapMs).toBe(0);
+    }
+  });
+
   it('is always a plain skip when music was paused', () => {
     const t = classifyTransition({ ...base, prevPositionMs: 198_000, newPositionMs: 0, wasPlaying: false });
     expect(t.kind).toBe('skip');
