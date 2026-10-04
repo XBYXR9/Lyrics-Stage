@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BlendLearner, classifyTransition, MAX_BLEND_MS, planCoverMerge, visualTransitionMs } from '../transitions';
+import { BlendLearner, classifyTransition, coverMergeBlocker, MAX_BLEND_MS, planCoverMerge, visualTransitionMs } from '../transitions';
 
 const base = { prevDurationMs: 200_000, sinceLastReportMs: 500, wasPlaying: true };
 
@@ -105,5 +105,16 @@ describe('cover merge for Automix blends', () => {
     expect(planCoverMerge(change('blend', 5000, { previous: { artUrl: null } }), on)).toBeNull();
     expect(planCoverMerge(change('blend', 5000, { previous: null }), on)).toBeNull();
     expect(planCoverMerge(change('blend', 5000, { track: { key: 'new', artUrl: null } }), on)).toBeNull();
+  });
+
+  it('says what is in the way, so it can be shown instead of the animation just seeming broken', () => {
+    expect(coverMergeBlocker(change('blend'), on)).toBeNull();
+    expect(coverMergeBlocker(change('skip'), on)).toBe('not-a-blend');
+    expect(coverMergeBlocker(change('blend'), { ...on, automixBlend: false })).toBe('blend-off');
+    expect(coverMergeBlocker(change('blend'), { ...on, reduceMotion: true })).toBe('reduce-motion');
+    expect(coverMergeBlocker(change('blend', 5000, { previous: null }), on)).toBe('no-cover');
+    // Reduce motion also makes the song change itself quick (this is what "rushed" looked like).
+    expect(visualTransitionMs({ kind: 'blend', overlapMs: 9000, startOffsetMs: 0 }, true)).toBe(250);
+    expect(visualTransitionMs({ kind: 'blend', overlapMs: 9000, startOffsetMs: 0 }, false)).toBe(8000);
   });
 });

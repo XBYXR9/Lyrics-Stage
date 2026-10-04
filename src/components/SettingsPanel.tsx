@@ -337,8 +337,8 @@ export function SettingsPanel({
           </p>
           <Toggle checked={settings.reduceMotion} onChange={(v) => set({ reduceMotion: v })} label="Reduce motion" />
           <p className="hint">
-            Tones down movement and blur, and turns off the album cover merge during Automix, the beat effects and the
-            lyric animations.
+            Tones down movement and blur, turns off the album cover merge during Automix and the beat effects, and makes
+            song changes quick instead of a slow blend.
             {systemReducesMotion() && (
               <>
                 {' '}

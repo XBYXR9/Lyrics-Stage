@@ -95,10 +95,28 @@ export function migrateSettings(stored: Record<string, unknown>): Record<string,
   return next;
 }
 
+/**
+ * Reduce motion starts as whatever the computer asks for, and that must not be saved just because some *other* setting
+ * was changed: it would stay on for good, even after the computer stops asking (Windows can switch its animations off
+ * for a while), and the Automix cover merge and the long song-change animation would be gone with no hint why. It is
+ * only saved once somebody has chosen it here (or saved it in an older version, when it was always saved).
+ */
+let reduceMotionChosen = false;
+
+/** What gets saved: all the settings, except Reduce motion while it has only ever been the computer's default. */
+export function settingsToStore(settings: Settings, reduceMotionWasChosen: boolean): Partial<Settings> {
+  const out: Partial<Settings> = { ...settings };
+  if (!reduceMotionWasChosen) delete out.reduceMotion;
+  return out;
+}
+
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...migrateSettings(JSON.parse(raw)) } : DEFAULT_SETTINGS;
+    if (!raw) return DEFAULT_SETTINGS;
+    const stored = migrateSettings(JSON.parse(raw));
+    reduceMotionChosen = typeof stored.reduceMotion === 'boolean';
+    return { ...DEFAULT_SETTINGS, ...stored };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -112,13 +130,19 @@ export function getSettings() {
 }
 
 export function updateSettings(patch: Partial<Settings>) {
+  if (typeof patch.reduceMotion === 'boolean') reduceMotionChosen = true;
   current = { ...current, ...patch };
   try {
-    localStorage.setItem(KEY, JSON.stringify(current));
+    localStorage.setItem(KEY, JSON.stringify(settingsToStore(current, reduceMotionChosen)));
   } catch {
     /* ignore */
   }
   listeners.forEach((l) => l());
+}
+
+/** Is Reduce motion on only because the computer asks for less motion (nobody chose it here)? */
+export function reduceMotionIsSystemDefault() {
+  return current.reduceMotion && !reduceMotionChosen;
 }
 
 function subscribe(l: () => void) {
