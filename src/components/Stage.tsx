@@ -125,7 +125,6 @@ export function Stage({
     setPanel(null);
     setRecording(true);
   }, []);
-  const [badge, setBadge] = useState<string | null>(null);
   const track = state.track;
   // A timing nudge for the song playing now (keys , and .): only changes when the lyrics show, and ends with the song.
   const [songNudge, setSongNudge] = useState<{ key: string | null; ms: number }>({ key: null, ms: 0 });
@@ -262,15 +261,6 @@ export function Stage({
     void getPalette(next.artUrl);
     if (next.artUrl) loadImage(next.artUrl).catch(() => {});
   }, [next]);
-
-  // A little badge when an Automix / Crossfade blend is detected.
-  useEffect(() => {
-    const t = change.transition;
-    if (t.kind !== 'blend' || !settings.automixBlend) return;
-    setBadge(`Automix blend · ${(t.overlapMs / 1000).toFixed(1)}s`);
-    const id = setTimeout(() => setBadge(null), Math.max(2600, t.overlapMs));
-    return () => clearTimeout(id);
-  }, [change.seq]);
 
   const cycleStyle = () => {
     const cur = getSettings().style;
@@ -627,12 +617,6 @@ export function Stage({
             <ExpandIcon />
           </button>
         </header>
-      )}
-
-      {badge && !recording && (
-        <div className="badge" role="status">
-          <SparkleIcon width={14} height={14} /> {badge}
-        </div>
       )}
 
       {panel === 'search' && <SearchPanel engine={engine} onClose={() => setPanel(null)} />}
