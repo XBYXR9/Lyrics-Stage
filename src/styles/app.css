@@ -1681,3 +1681,60 @@ kbd {
 .calm-ui .rec-hud {
   animation: none;
 }
+
+/* ---------- Lyric card ---------- */
+.card-preview {
+  display: grid;
+  place-items: center;
+  padding: 4px 0 14px;
+}
+.card-preview canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 42vh;
+  width: auto;
+  height: auto;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.38);
+  background: rgba(255, 255, 255, 0.05);
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+.card-actions .btn {
+  flex: 1 1 auto;
+}
+.card-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.card-line {
+  text-align: start;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  font: 500 14px/1.35 var(--font-ui);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.card-line:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.card-line.on {
+  background: rgba(255, 255, 255, 0.17);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+  font-weight: 600;
+}

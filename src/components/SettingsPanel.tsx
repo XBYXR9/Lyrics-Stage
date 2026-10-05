@@ -286,6 +286,12 @@ export function SettingsPanel({
               { value: 'fluid', label: 'Color flow' },
             ]}
           />
+          <Toggle checked={settings.backgroundBeat} onChange={(v) => set({ backgroundBeat: v })} label="Background moves with the beat" />
+          <p className="hint">
+            The background swells a few percent on every beat and settles again, softly, with no change in brightness.
+            It follows the real beat with <b>Follow your PC’s sound</b> (Windows); without it, it follows a gentle
+            estimated rhythm, so it can be a little off. It’s off with Reduce motion.
+          </p>
         </Section>
 
         <Section title="Song transitions">
@@ -428,7 +434,7 @@ export function SettingsPanel({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="set-section">
       <h3>{title}</h3>
@@ -437,7 +443,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Segmented<T extends string>({
+export function Segmented<T extends string>({
   value,
   onChange,
   options,
@@ -463,7 +469,7 @@ function Segmented<T extends string>({
   );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <label className="toggle">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />

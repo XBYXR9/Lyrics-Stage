@@ -5,7 +5,10 @@
 // It's drawn small (about 128px wide) and stretched, which keeps it cheap.
 // Speed follows the song's energy, and on song changes the new background
 // fades in over the same time as the lyric transition (long for Automix blends).
+// With "Background moves with the beat" on, every beat swells it a few percent and
+// pushes the drifting along, then it settles (see BeatPunch in src/lib/beat.ts).
 import { useEffect, useRef, type CSSProperties } from 'react';
+import { BeatPunch, BG_ZOOM, onBeat } from '../lib/beat';
 import { loadImage } from '../lib/palette';
 import type { BackgroundMode } from '../lib/settings';
 import type { Palette } from '../lib/types';
@@ -26,6 +29,7 @@ export function Background({
   motion,
   transitionMs,
   reduceMotion,
+  beatMotion,
   shade,
 }: {
   artUrl: string | null;
@@ -34,13 +38,22 @@ export function Background({
   motion: number;
   transitionMs: number;
   reduceMotion: boolean;
+  /** The background swells with every beat. */
+  beatMotion: boolean;
   /** 0..1 darkening so white lyrics stay readable on bright covers. */
   shade: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layers = useRef<BgLayer[]>([]);
-  const opts = useRef({ mode, motion, reduceMotion });
-  opts.current = { mode, motion, reduceMotion };
+  const opts = useRef({ mode, motion, reduceMotion, beatMotion });
+  opts.current = { mode, motion, reduceMotion, beatMotion };
+  const punch = useRef(new BeatPunch());
+
+  // Beats push the background (only while that is switched on).
+  useEffect(() => {
+    if (!beatMotion) return;
+    return onBeat((strength, real) => punch.current.hit(strength, real, performance.now()));
+  }, [beatMotion]);
 
   // Add a new layer whenever the cover/palette changes.
   useEffect(() => {
@@ -80,13 +93,25 @@ export function Background({
     let raf = 0;
     let last = 0;
     let t = 0; // animation time, advanced by `motion`
+    // Without a filter the canvas is blurred by CSS and already scaled up (see .css-blur).
+    const baseScale = canFilter ? 1 : 1.2;
+    let pushed = false;
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
+      // The push is smooth at the screen's full speed: only a transform on the canvas, nothing redrawn.
+      const push = opts.current.beatMotion && !opts.current.reduceMotion ? punch.current.read(now) : 0;
+      if (push > 0.002) {
+        canvas.style.transform = `scale(${(baseScale * (1 + push * BG_ZOOM)).toFixed(4)})`;
+        pushed = true;
+      } else if (pushed) {
+        canvas.style.transform = '';
+        pushed = false;
+      }
       if (now - last < 33) return; // ~30 fps is plenty for a blurry background
       const dt = Math.min(100, now - last);
       last = now;
       const { mode, motion, reduceMotion } = opts.current;
-      t += dt * (reduceMotion ? 0.15 : motion);
+      t += dt * (reduceMotion ? 0.15 : motion * (1 + push * 2.5));
 
       const w = scratch.width;
       const h = scratch.height;

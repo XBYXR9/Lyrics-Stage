@@ -99,18 +99,23 @@ export function beatPlan(o: {
   lyricsKind: LyricsKind | null;
   sceneShown: boolean;
   whileSinging: boolean;
+  /** The background moves with the beat: beats are listened for even when no flash is shown. */
+  background?: boolean;
 }): BeatPlan {
   const off: BeatPlan = { detect: false, flashIn: 'never', anywhere: false };
   if (o.reduceMotion) return off;
+  // Only listening: the background wants the beats, but nothing flashes.
+  const listenOnly: BeatPlan = o.background ? { detect: true, flashIn: 'never', anywhere: false } : off;
   if (o.sceneShown) return { detect: true, flashIn: o.style === 'off' ? 'never' : 'always', anywhere: false };
-  if (o.style === 'off') return off;
+  if (o.style === 'off') return listenOnly;
   const synced = o.lyricsKind === 'synced';
-  if (!synced && !o.whileSinging) return off;
+  if (!synced && !o.whileSinging) return listenOnly;
   return { detect: true, flashIn: synced ? 'pauses' : 'never', anywhere: o.whileSinging };
 }
 
-// Strong beats are announced here, so the flash and the no-lyrics scene react to the same ones.
-type BeatListener = (strength: number) => void;
+// Strong beats are announced here, so the flash, the background and the no-lyrics scene react to the same ones.
+// `real` is false for the estimated rhythm (no sound to listen to): it is only a steady guess at the tempo.
+type BeatListener = (strength: number, real: boolean) => void;
 const listeners = new Set<BeatListener>();
 
 /** Calls `listener` with the strength (0..1) of every strong beat. Returns a function that stops listening. */
@@ -121,9 +126,41 @@ export function onBeat(listener: BeatListener): () => void {
   };
 }
 
-export function emitBeat(strength: number) {
-  listeners.forEach((l) => l(strength));
+export function emitBeat(strength: number, real = true) {
+  listeners.forEach((l) => l(strength, real));
 }
+
+/**
+ * How hard the background is pushed by a beat, fading away on its own. A beat sets it to its own strength (never
+ * adds to it), so a fast run of beats keeps the background pushed without making it move further: the zoom is
+ * bounded however many beats there are. The estimated rhythm only pushes gently, since it is a guess.
+ */
+export class BeatPunch {
+  private value = 0;
+  private at = 0;
+
+  hit(strength: number, real: boolean, nowMs: number) {
+    const s = (PUNCH_FLOOR + (1 - PUNCH_FLOOR) * Math.min(1, Math.max(0, strength))) * (real ? 1 : ESTIMATED_PUNCH);
+    this.value = Math.max(this.read(nowMs), s);
+    this.at = nowMs;
+  }
+
+  /** 0..1 now. */
+  read(nowMs: number): number {
+    const age = nowMs - this.at;
+    if (age < 0) return this.value;
+    return this.value * Math.exp(-age / PUNCH_DECAY_MS);
+  }
+}
+
+/** Even the softest beat pushes this much (of the full push). */
+const PUNCH_FLOOR = 0.4;
+/** The estimated rhythm pushes this much of what a real beat does. */
+export const ESTIMATED_PUNCH = 0.45;
+/** How fast the push dies away. */
+export const PUNCH_DECAY_MS = 170;
+/** The background grows by this much (a fraction) at a full push: a few percent, soft and blurred, no change in brightness. */
+export const BG_ZOOM = 0.05;
 
 /** Settings asks for a sample flash of the chosen style (when you change it). */
 export const BEAT_PREVIEW_EVENT = 'ls:beat-preview';

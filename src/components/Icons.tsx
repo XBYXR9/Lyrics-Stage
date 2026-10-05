@@ -110,3 +110,12 @@ export const VolumeUpIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18.5 6.5a7.5 7.5 0 0 1 0 11" />
   </svg>
 );
+
+/** A picture with a quote mark: the lyric card. */
+export const CardIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="4" y="3.5" width="16" height="17" rx="3" />
+    <path d="M9 10.5c0-1.2.8-2 2-2M9 10.5v2.2h2.2v-2.2H9ZM13.6 10.5c0-1.2.8-2 2-2M13.6 10.5v2.2h2.2v-2.2h-2.2Z" />
+    <path d="M8 16.5h8" />
+  </svg>
+);

@@ -21,6 +21,8 @@ export interface Settings {
   fontScale: number;
   /** Moving blurred album art, or flowing colors taken from it. */
   background: BackgroundMode;
+  /** The background swells a little with every beat (the real sound if we can hear it, otherwise a gentle estimated rhythm). */
+  backgroundBeat: boolean;
   /** Word-by-word highlight: always (estimate when needed), only with real word timing, or whole lines. */
   wordSweep: WordSweep;
   /** Long, smooth crossfades when Spotify Automix / Crossfade blends songs. */
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   offsetMs: 0,
   fontScale: 1,
   background: 'art',
+  backgroundBeat: true,
   wordSweep: 'estimated',
   automixBlend: true,
   fixBlendTiming: true,

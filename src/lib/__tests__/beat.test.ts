@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bassBins, detectBeat, newBeatState } from '../audioLevels';
-import { BIG_BEAT, beatPlan, canFlash, emitBeat, FAST_FLASH_GAP_MS, FLASH_MS, flashShape, inSongWindow, isBigBeat, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
+import { BG_ZOOM, BIG_BEAT, BeatPunch, beatPlan, canFlash, emitBeat, ESTIMATED_PUNCH, FAST_FLASH_GAP_MS, FLASH_MS, flashShape, inSongWindow, isBigBeat, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
 import { buildSynced } from '../lrc';
 import { DEFAULT_SETTINGS } from '../settings';
 import { estimatedBeat, estimatedBpm } from '../pulse';
@@ -266,6 +266,17 @@ describe('what the beat code does', () => {
     expect(beatPlan({ ...base, lyricsKind: 'none', sceneShown: true, reduceMotion: true })).toEqual(none);
   });
 
+  it('listens for beats when the background moves with them, even with no flash to show', () => {
+    const listen = { detect: true, flashIn: 'never', anywhere: false };
+    expect(beatPlan({ ...base, style: 'off', lyricsKind: 'synced', background: true })).toEqual(listen);
+    expect(beatPlan({ ...base, lyricsKind: 'plain', whileSinging: false, background: true })).toEqual(listen);
+    // nothing changes where beats were already listened for, and without the background it still does nothing
+    expect(beatPlan({ ...base, background: true })).toEqual(beatPlan(base));
+    expect(beatPlan({ ...base, style: 'off' })).toEqual({ detect: false, flashIn: 'never', anywhere: false });
+    // Reduce motion switches the background's movement off too
+    expect(beatPlan({ ...base, style: 'off', reduceMotion: true, background: true })).toEqual({ detect: false, flashIn: 'never', anywhere: false });
+  });
+
   it('calls a beat big from 0.7 up', () => {
     expect(BIG_BEAT).toBe(0.7);
     expect(isBigBeat(0.69)).toBe(false);
@@ -283,5 +294,50 @@ describe('the beat bus', () => {
     stop();
     emitBeat(0.2);
     expect(heard).toEqual([0.5, 1]);
+  });
+});
+
+describe('the background push', () => {
+  it('starts at the beat’s own strength, and settles within about half a second', () => {
+    const p = new BeatPunch();
+    expect(p.read(0)).toBe(0);
+    p.hit(1, true, 1000);
+    expect(p.read(1000)).toBeCloseTo(1, 5);
+    expect(p.read(1170)).toBeCloseTo(Math.exp(-1), 2);
+    expect(p.read(1600)).toBeLessThan(0.05);
+  });
+
+  it('is pushed a little even by the softest beat, and harder by a harder one', () => {
+    const soft = new BeatPunch();
+    soft.hit(0, true, 0);
+    const hard = new BeatPunch();
+    hard.hit(1, true, 0);
+    expect(soft.read(0)).toBeCloseTo(0.4, 5);
+    expect(hard.read(0)).toBeGreaterThan(soft.read(0));
+  });
+
+  it('only pushes gently for the estimated rhythm, which is a guess', () => {
+    const p = new BeatPunch();
+    p.hit(1, false, 0);
+    expect(p.read(0)).toBeCloseTo(ESTIMATED_PUNCH, 5);
+  });
+
+  it('never moves further for a fast run of beats, and a soft beat does not cut a strong push short', () => {
+    const p = new BeatPunch();
+    let max = 0;
+    for (let k = 0; k < 200; k++) {
+      p.hit(1, true, k * 90);
+      max = Math.max(max, p.read(k * 90));
+    }
+    expect(max).toBeLessThanOrEqual(1);
+    const q = new BeatPunch();
+    q.hit(1, true, 0);
+    q.hit(0, true, 10);
+    expect(q.read(10)).toBeGreaterThan(0.9);
+  });
+
+  it('swells the background by a few percent at most, softly', () => {
+    expect(BG_ZOOM).toBeGreaterThan(0.02);
+    expect(BG_ZOOM).toBeLessThanOrEqual(0.06);
   });
 });

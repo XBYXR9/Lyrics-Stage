@@ -95,6 +95,8 @@ export interface BeatFlashOptions {
   whileSinging: boolean;
   /** Flashes may follow fast drum patterns (up to about seven a second) instead of at most three a second. */
   fast: boolean;
+  /** The background moves with the beat, so beats are listened for even when no flash is shown. */
+  background: boolean;
   song: SongWindow;
   offsetMs: number;
   /** 0..1, how energetic the song feels: sets the speed of the estimated rhythm. */
@@ -117,6 +119,7 @@ export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPla
     lyricsKind: o.lyrics?.kind ?? null,
     sceneShown: o.sceneShown,
     whileSinging: o.whileSinging,
+    background: o.background,
   });
   const latest = useLatest({ ...o, plan });
   const memory = useRef({ prevT: -1, at: -Infinity, strength: 0, dark: true });
@@ -180,7 +183,7 @@ export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPla
       if (open) beat = heard ? real : estimatedBeat(m.prevT, t, energy);
       m.prevT = t;
       if (beat > 0) {
-        emitBeat(beat);
+        emitBeat(beat, !!heard);
         // Every bass beat in the real sound glows anywhere in the song (harder beats brighter); the estimated rhythm
         // isn't the real beat, so it stays in the pauses.
         const here = (p.anywhere && heard) || p.flashIn === 'always' || (p.flashIn === 'pauses' && !!lyrics && shortPauseAt(lyrics.lines, t));
