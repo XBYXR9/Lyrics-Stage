@@ -109,9 +109,16 @@ export interface BeatState {
   lastAt: number;
   /** How hard the hardest recent beat hit, fading slowly: a beat is rated against it. */
   peak: number;
+  /** After a beat: the highest the bass (all bins added up, weighted) has been since, and the lowest it has been since that top. */
+  top: number;
+  low: number;
+  /** After a beat: has the bass come down from its top since? */
+  dipped: boolean;
+  /** After a beat: has the bass dipped and risen again since, so that the next sharp rise is a new beat and not the same one? */
+  armed: boolean;
 }
 
-export const newBeatState = (): BeatState => ({ floors: null, recent: [], lastNow: -1, lastAt: -Infinity, peak: 0 });
+export const newBeatState = (): BeatState => ({ floors: null, recent: [], lastNow: -1, lastAt: -Infinity, peak: 0, top: 0, low: 0, dipped: false, armed: true });
 
 /** How much a floor may creep up per second. */
 const FLOOR_CREEP_PER_S = 0.15;
@@ -122,7 +129,18 @@ const MIN_ATTACK = 0.04;
 /** A beat needs this much rising bass added up over all the bins (a kick rises in several bins, a pure bass note in one or two). */
 const MIN_HIT = 0.3;
 const RECENT_MS = 100;
-const MIN_BEAT_GAP_MS = 250;
+/**
+ * Two beats are never closer than this: a debounce against jitter. Fast drum patterns (16th notes at 120 BPM are 125 ms
+ * apart, double kicks about 180 ms) need it short; what keeps one long kick or 808 from counting twice is REARM_RISE.
+ */
+const MIN_BEAT_GAP_MS = 90;
+/**
+ * After a beat, the next one only counts once the bass has come down by at least REARM_DIP and then gone up again by
+ * REARM_RISE (all bins added up, see binWeight). The fixed 250 ms gap this replaces dropped about half of the beats in
+ * fast patterns, but a plain shorter gap counts a slow-rising 808 twice: its rise outlasts the gap.
+ */
+const REARM_DIP = 0.12;
+const REARM_RISE = 0.12;
 
 /**
  * How much a bin's rise counts, by its place in the bass range (0 = lowest, 1 =
@@ -136,7 +154,8 @@ const binWeight = (place: number) => (place <= 0.4 ? 1 : 1 - ((place - 0.4) / 0.
  * bassBins). A beat is a sharp rise in the bass, clearly above where it has
  * been lately: a kick drum, a bass note, an 808. Steady loud bass isn't a beat,
  * and neither is a slow swell or the tail of the last beat, however loud the
- * rest of the music is. Beats are at least 250 ms apart. Returns its strength
+ * rest of the music is. A beat counts again only once the bass has dipped and risen
+ * since the last one, however fast that is (a kick every 125 ms is fine). Returns its strength
  * (0..1), or 0: how hard it hit compared with the hardest recent beat, so the
  * hardest are 1.
  */
@@ -150,7 +169,9 @@ export function detectBeat(levels: ArrayLike<number>, state: BeatState, nowMs: n
 
   while (state.recent.length && nowMs - state.recent[0].at > RECENT_MS) state.recent.shift();
   let total = 0;
+  let energy = 0;
   for (let i = 0; i < n; i++) {
+    energy += binWeight(n > 1 ? i / (n - 1) : 0) * levels[i];
     floors[i] = Math.min(levels[i], floors[i] + FLOOR_CREEP_PER_S * dt);
     let before = levels[i];
     for (const r of state.recent) before = Math.min(before, r.levels[i]);
@@ -160,8 +181,24 @@ export function detectBeat(levels: ArrayLike<number>, state: BeatState, nowMs: n
   }
   state.recent.push({ at: nowMs, levels: Float32Array.from(levels) });
 
-  if (total < MIN_HIT || nowMs - state.lastAt <= MIN_BEAT_GAP_MS) return 0;
+  // Since the last beat: has the bass come down, and gone up again? (Once it has, that stays true until the next beat.)
+  if (!state.armed) {
+    if (state.dipped) {
+      if (energy - state.low >= REARM_RISE) state.armed = true;
+      else state.low = Math.min(state.low, energy);
+    } else if (energy >= state.top) {
+      state.top = state.low = energy; // still climbing: the same beat
+    } else {
+      state.low = Math.min(state.low, energy);
+      if (state.top - state.low >= REARM_DIP) state.dipped = true;
+    }
+  }
+
+  if (total < MIN_HIT || !state.armed || nowMs - state.lastAt <= MIN_BEAT_GAP_MS) return 0;
   state.lastAt = nowMs;
+  state.armed = false;
+  state.dipped = false;
+  state.top = state.low = energy;
   state.peak = Math.max(state.peak, total);
   const span = Math.max(0.1, state.peak - MIN_HIT);
   return Math.min(1, Math.max(0.35, 0.35 + (0.65 * (total - MIN_HIT)) / span));

@@ -39,6 +39,8 @@ export interface Settings {
   beatStyle: BeatStyle;
   /** Bass beats in the real sound (Windows) also glow while someone is singing, not only in the pauses between lines. */
   flashWhileSinging: boolean;
+  /** Let the flash follow fast drum patterns (up to about seven a second) instead of at most three a second. Off by default. */
+  fastFlashes: boolean;
   /** What to show while a song has no lyrics (or is instrumental). */
   noLyricsVisual: NoLyricsVisual;
   /** Tone down movement and blur. */
@@ -70,6 +72,7 @@ export const DEFAULT_SETTINGS: Settings = {
   soundDelayMs: 0,
   beatStyle: 'glow',
   flashWhileSinging: true,
+  fastFlashes: false,
   noLyricsVisual: 'orb',
   reduceMotion: prefersReducedMotion(),
   lyricsOnly: false,

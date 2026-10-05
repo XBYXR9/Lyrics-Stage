@@ -93,6 +93,8 @@ export interface BeatFlashOptions {
   sceneShown: boolean;
   /** Bass beats heard in the real sound also flash while someone is singing. */
   whileSinging: boolean;
+  /** Flashes may follow fast drum patterns (up to about seven a second) instead of at most three a second. */
+  fast: boolean;
   song: SongWindow;
   offsetMs: number;
   /** 0..1, how energetic the song feels: sets the speed of the estimated rhythm. */
@@ -106,7 +108,7 @@ const KICK_SCALE = 0.06;
  * Finds strong beats (in the real sound if we're listening, otherwise the
  * estimated rhythm), announces them on the beat bus, and paints the chosen
  * flash style. Beats only count inside the song's window, and flashes follow
- * the safety rules in beat.ts: never more than three a second, tinted and soft.
+ * the safety rules in beat.ts: never more than three a second (unless fast beats were asked for), tinted and soft.
  */
 export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPlan {
   const plan = beatPlan({
@@ -147,8 +149,8 @@ export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPla
     const onPreview = () => {
       const m = memory.current;
       const now = performance.now();
-      const { reduceMotion, style } = latest.current;
-      if (reduceMotion || style === 'off' || !canFlash(now, m.at)) return;
+      const { reduceMotion, style, fast } = latest.current;
+      if (reduceMotion || style === 'off' || !canFlash(now, m.at, fast)) return;
       centre();
       m.at = now;
       m.strength = 1;
@@ -166,7 +168,7 @@ export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPla
 
   useFrame((now) => {
     const m = memory.current;
-    const { plan: p, song, lyrics, offsetMs, energy } = latest.current;
+    const { plan: p, song, lyrics, offsetMs, energy, fast } = latest.current;
     const open = windowOpen(song, now);
     const t = song.clock.now(now) + offsetMs;
 
@@ -182,7 +184,7 @@ export function useBeatFlash(targets: BeatTargets, o: BeatFlashOptions): BeatPla
         // Every bass beat in the real sound glows anywhere in the song (harder beats brighter); the estimated rhythm
         // isn't the real beat, so it stays in the pauses.
         const here = (p.anywhere && heard) || p.flashIn === 'always' || (p.flashIn === 'pauses' && !!lyrics && shortPauseAt(lyrics.lines, t));
-        if (here && canFlash(now, m.at)) {
+        if (here && canFlash(now, m.at, fast)) {
           centre();
           m.at = now;
           m.strength = beat;

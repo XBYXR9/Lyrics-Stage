@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { bassBins, detectBeat, newBeatState } from '../audioLevels';
-import { BIG_BEAT, beatPlan, canFlash, emitBeat, FLASH_MS, flashShape, inSongWindow, isBigBeat, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
+import { BIG_BEAT, beatPlan, canFlash, emitBeat, FAST_FLASH_GAP_MS, FLASH_MS, flashShape, inSongWindow, isBigBeat, MIN_FLASH_GAP_MS, MIN_PAUSE_MS, onBeat, shortPauseAt } from '../beat';
 import { buildSynced } from '../lrc';
+import { DEFAULT_SETTINGS } from '../settings';
 import { estimatedBeat, estimatedBpm } from '../pulse';
 
 // Line A is sung 10.0–12.0 s, line B starts at 12.6 s (a 0.6 s pause), line C at 13.1 s (0.5 s after B ends),
@@ -81,9 +82,11 @@ describe('strong beats', () => {
     expect(listen(() => 0.9, 6)).toHaveLength(0);
   });
 
-  it('never counts two beats within 250 ms', () => {
-    // a kick every 120 ms is too fast to be separate beats: at most one is counted per 250 ms
-    expect(listen((t) => 0.1 + hit(t, 0.12, 0.8, 0.03), 5).length).toBeLessThanOrEqual(Math.ceil(5 / 0.25));
+  it('hears a kick every 120 ms, one beat per kick', () => {
+    // 41 kicks in 5 s (16th notes at 125 BPM): the old fixed 250 ms gap dropped about half of them
+    const heard = listen((t) => 0.1 + hit(t, 0.12, 0.8, 0.03), 5).length;
+    expect(heard).toBeGreaterThanOrEqual(38);
+    expect(heard).toBeLessThanOrEqual(42);
   });
 
   it('hears every kind of bass beat, soft or hard, not only the big ones', () => {
@@ -135,12 +138,71 @@ describe('strong beats', () => {
   });
 });
 
+describe('fast beats', () => {
+  /**
+   * The beats heard in a pattern, after the bass has been smeared the way the analyser smears it (an FFT window of about
+   * 43 ms, then smoothing of 0.55 per read), read 60 times a second.
+   */
+  const heard = (pattern: (t: number) => number, secs = 10) => {
+    const state = newBeatState();
+    let smooth = [0, 0, 0, 0, 0];
+    let n = 0;
+    for (let f = 0; f < secs * 60; f++) {
+      const t = f / 60;
+      let level = 0;
+      for (let k = 0; k < 5; k++) level += pattern(t - k * 0.0086) / 5;
+      smooth = smooth.map((v) => 0.55 * v + 0.45 * Math.min(1, Math.max(0, level)));
+      if (detectBeat(smooth, state, t * 1000) > 0) n++;
+    }
+    return n;
+  };
+  const kick = (t: number, period: number, height: number, tau: number, rise = 0.002) => {
+    const x = ((t % period) + period) % period;
+    return 0.1 + height * (1 - Math.exp(-x / rise)) * Math.exp(-x / tau);
+  };
+
+  it('follows fast drum patterns beat by beat (a fixed 250 ms gap heard only 44 to 71% of them)', () => {
+    // [period (s), tau (s)]: 8ths at 140 and 170 BPM, 16ths at 100 and 120 BPM, trap 808s, a double kick
+    for (const [period, tau] of [[0.214, 0.07], [0.176, 0.06], [0.15, 0.05], [0.125, 0.05], [0.2, 0.2], [0.18, 0.06]]) {
+      const expected = Math.floor(10 / period) - 1;
+      const n = heard((t) => kick(t, period, 0.65, tau));
+      expect(n, `period ${period}`).toBeGreaterThanOrEqual(Math.floor(expected * 0.9));
+      expect(n, `period ${period}`).toBeLessThanOrEqual(Math.ceil(expected * 1.1));
+    }
+  });
+
+  it('still counts one long kick or 808 once, however slowly it rises', () => {
+    // [period, tau, rise]: the longer a note takes to rise, the longer it looks "new"; a plain shorter gap counted these twice
+    for (const [period, tau, rise] of [[1, 0.4, 0.03], [1, 0.4, 0.08], [0.5, 0.15, 0.05], [0.7, 0.3, 0.12], [0.6, 0.5, 0.2]]) {
+      const expected = Math.floor(12 / period);
+      const n = heard((t) => kick(t, period, 0.7, tau, rise), 12);
+      expect(n, `period ${period}, tau ${tau}, rise ${rise}`).toBeLessThanOrEqual(expected + 1);
+      expect(n, `period ${period}, tau ${tau}, rise ${rise}`).toBeGreaterThanOrEqual(expected - 2);
+    }
+  });
+
+  it('counts a kick that is louder than the one before it, even before the last one has faded', () => {
+    // every other kick is much harder, so the bass climbs past the previous top before the beat is noticed
+    const n = heard((t) => 0.1 + (Math.floor(t / 0.25) % 2 === 0 ? 0.3 : 0.8) * Math.exp(-(t % 0.25) / 0.07));
+    expect(n).toBeGreaterThanOrEqual(36); // 39 kicks
+  });
+});
+
 describe('flash', () => {
   it('flashes at most three times a second', () => {
     expect(MIN_FLASH_GAP_MS).toBeGreaterThanOrEqual(1000 / 3);
     expect(canFlash(1000, 800)).toBe(false);
     expect(canFlash(1000, 600)).toBe(true);
     expect(canFlash(0, -Infinity)).toBe(true);
+  });
+
+  it('may follow fast beats, about seven a second, only when asked to', () => {
+    expect(FAST_FLASH_GAP_MS).toBeLessThan(MIN_FLASH_GAP_MS);
+    expect(1000 / FAST_FLASH_GAP_MS).toBeGreaterThan(6);
+    expect(canFlash(1000, 800)).toBe(false); // 200 ms: too soon for the normal limit...
+    expect(canFlash(1000, 800, true)).toBe(true); // ...but fine when following fast beats
+    expect(canFlash(1000, 900, true)).toBe(false); // still not faster than that
+    expect(DEFAULT_SETTINGS.fastFlashes).toBe(false); // off unless somebody switches it on
   });
 
   it('peaks at once, fades out, and a harder beat is brighter', () => {

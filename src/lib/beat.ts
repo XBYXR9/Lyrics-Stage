@@ -16,6 +16,12 @@ export const MIN_PAUSE_MS = 250;
  */
 export const MIN_FLASH_GAP_MS = 340;
 
+/**
+ * With "Flash on every fast beat" switched on (off by default, and not for anyone sensitive to flashing light) flashes may
+ * be this far apart: up to about seven a second, so a fast drum pattern is followed beat by beat.
+ */
+export const FAST_FLASH_GAP_MS = 140;
+
 /** How long one flash takes to fade out. */
 export const FLASH_MS = 450;
 
@@ -45,8 +51,9 @@ export function inSongWindow(o: { playing: boolean; positionMs: number; duration
   return !(o.durationMs > 0 && o.positionMs >= o.durationMs);
 }
 
-/** May a flash happen now, given when the last one did? */
-export const canFlash = (nowMs: number, lastFlashAtMs: number) => nowMs - lastFlashAtMs >= MIN_FLASH_GAP_MS;
+/** May a flash happen now, given when the last one did? (`fast`: the opt-in for fast drum patterns, see FAST_FLASH_GAP_MS.) */
+export const canFlash = (nowMs: number, lastFlashAtMs: number, fast = false) =>
+  nowMs - lastFlashAtMs >= (fast ? FAST_FLASH_GAP_MS : MIN_FLASH_GAP_MS);
 
 /**
  * What the flash looks like `ageMs` after it started, for a beat of this
