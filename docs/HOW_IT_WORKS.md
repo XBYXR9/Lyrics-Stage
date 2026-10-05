@@ -321,6 +321,35 @@ in the lyrics area only (beside the cover and player), so its glow and rings fad
 (`edgeFade` in `src/lib/scene.ts`); otherwise they would end in a hard straight line there and the screen would look
 split in two. The bars blend the two album colors smoothly all the way round (`mixHsl`).
 
+### The background and the beat
+
+With *Background moves with the beat* on (Settings → Background, on by default), every beat on the beat bus (`onBeat`)
+pushes the background: `BeatPunch` (`src/lib/beat.ts`) holds how hard it was pushed and fades it with a 170 ms time
+constant, and `Background` (`src/components/Background.tsx`) scales its canvas by up to 5% (`BG_ZOOM`) and speeds the
+drifting along, every frame at the screen's full speed (only a transform, nothing redrawn). A beat *sets* the push to its
+own strength rather than adding to it, so a fast run of beats can't make it move further. Beats from the real sound push
+fully; the estimated rhythm (no sound to listen to) is a guess at the tempo and pushes at 45%. There is no change in
+brightness, so it isn't a flash. `beatPlan` listens for beats for the background even when no flash is shown (`background`
+option), and Reduce motion switches it all off.
+
+### The lyric card
+
+<kbd>C</kbd> or the quote-card button opens `CardPanel` (`src/components/CardPanel.tsx`): the lines of the song (without the
+"•••" pauses), the line being sung and the next one picked to start with, and a live preview. `src/lib/lyricCard.ts`
+does the work, and everything that decides what goes where takes a text-width function, so it is tested without a screen
+(`src/lib/__tests__/lyricCard.test.ts`): `wrapLine` breaks at spaces (between characters for text without spaces, and
+inside a word wider than the row), `wrapBalanced` makes the rows about the same length so a line doesn't end with one
+word on its own, and `layoutLyrics` finds the biggest text size (112 down to 44 px) at which the lines fit, leaving the
+last lines off (and telling the panel) rather than making the text unreadable. `drawCard` paints a 1080 px wide canvas:
+the cover blurred (shrunk, blurred a little and stretched back) with a dark gradient for readability, or a gradient of the
+cover's colors; the cover, song and artist at the top; the lines left-aligned (right-to-left lines right-aligned); a small
+"Lyrics Stage" mark. The 9:16 story keeps 230 px free at the top and 420 px at the bottom for the buttons and caption the
+other apps put there. Getting the picture out is `src/lib/shareCard.ts`: **Save** is a download (the desktop app asks
+where), **Copy** puts a PNG on the clipboard, **Share** opens the share sheet (`navigator.share` with a file where a
+browser has it; in the Android app the PNG is written to the app's cache with `@capacitor/filesystem` and handed to
+`@capacitor/share`, since Android's web view can neither download nor copy a picture). What was chosen (shape, look, the
+two switches) is remembered in `localStorage`.
+
 ### Lyrics only
 
 Switching "lyrics only" on slides the cover and player away (the cover shrinks, spins and blurs out first) while the

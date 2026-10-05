@@ -18,7 +18,8 @@ import { coverMergeBlocker, visualTransitionMs } from '../lib/transitions';
 import type { Palette, StyleChoice } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
 import { Background } from './Background';
-import { CloseIcon, ExpandIcon, LyricsIcon, PortraitIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
+import { CardPanel } from './CardPanel';
+import { CardIcon, CloseIcon, ExpandIcon, LyricsIcon, PortraitIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
 import { LyricsStage } from './LyricsStage';
 import { NowPlaying, VOLUME_STEP } from './NowPlaying';
 import { SearchPanel } from './SearchPanel';
@@ -111,7 +112,7 @@ export function Stage({
 }) {
   const state = useEngineState(engine);
   const settings = useSettings();
-  const [panel, setPanel] = useState<'search' | 'settings' | null>(null);
+  const [panel, setPanel] = useState<'search' | 'settings' | 'card' | null>(null);
   const panelRef = useRef(panel);
   panelRef.current = panel;
   const native = isNativeApp();
@@ -203,7 +204,8 @@ export function Stage({
   const kickRef = useRef<HTMLDivElement>(null);
   const song = { clock: engine.clock, durationMs: track?.durationMs ?? 0, active: !!track && state.status !== 'ad' };
   const sceneShown = song.active && showsScene(lyrics?.kind ?? null, settings.noLyricsVisual, settings.reduceMotion);
-  const usesBeats = !settings.reduceMotion && (settings.beatStyle !== 'off' || settings.breakVisual === 'bars' || settings.noLyricsVisual !== 'message');
+  const usesBeats =
+    !settings.reduceMotion && (settings.beatStyle !== 'off' || settings.breakVisual === 'bars' || settings.noLyricsVisual !== 'message' || settings.backgroundBeat);
   const canHearPc = desktopApi()?.platform === 'win32';
   useRealSound(canHearPc && settings.soundSync === 'on' && usesBeats, song, settings.soundDelayMs);
   useBeatFlash(
@@ -215,6 +217,7 @@ export function Stage({
       sceneShown,
       whileSinging: settings.flashWhileSinging,
       fast: settings.fastFlashes,
+      background: settings.backgroundBeat,
       song,
       offsetMs: settings.offsetMs + nudgeMs,
       energy: vibe?.energy ?? 0.5,
@@ -307,6 +310,9 @@ export function Stage({
           break;
         case 'l':
           if (!recordingRef.current) updateSettings({ lyricsOnly: !getSettings().lyricsOnly });
+          break;
+        case 'c':
+          if (!recordingRef.current && engine.getState().track) setPanel((p) => (p === 'card' ? null : 'card'));
           break;
         case 'f':
           if (!recordingRef.current) toggleFullscreen();
@@ -484,6 +490,7 @@ export function Stage({
           motion={vibe?.motion ?? 0.8}
           transitionMs={transitionMs}
           reduceMotion={settings.reduceMotion}
+          beatMotion={settings.backgroundBeat}
           shade={0.14 + scene.palette.brightness * 0.42}
         />
 
@@ -605,6 +612,11 @@ export function Stage({
           >
             <LyricsIcon />
           </button>
+          {track && (
+            <button className="icon-btn" onClick={() => setPanel(panel === 'card' ? null : 'card')} aria-label="Lyric card" title="Lyric card to share (C)">
+              <CardIcon />
+            </button>
+          )}
           <button className="icon-btn" onClick={() => setPanel(panel === 'settings' ? null : 'settings')} aria-label="Settings" title="Settings (S)">
             <SettingsIcon />
           </button>
@@ -624,6 +636,9 @@ export function Stage({
       )}
 
       {panel === 'search' && <SearchPanel engine={engine} onClose={() => setPanel(null)} />}
+      {panel === 'card' && track && (
+        <CardPanel track={track} lyrics={lyrics} playingMs={engine.clock.now() + settings.offsetMs + nudgeMs} onClose={() => setPanel(null)} />
+      )}
       {panel === 'settings' && (
         <SettingsPanel
           settings={settings}

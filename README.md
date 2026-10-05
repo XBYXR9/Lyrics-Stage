@@ -34,6 +34,13 @@ songs together, the lyrics blend too.
   or off. At most three flashes a second (unless you switch on *Flash on every fast beat*, which is not for anyone
   sensitive to flashing light), soft and tinted (never white), and off with Reduce motion. With the PC's
   real sound (Windows), every bass beat glows even while someone is singing, not only in the pauses.
+- **A background that moves with the beat.** The blurred album background swells a few percent on every beat and
+  settles again, softly, with no change in brightness. It follows the real beat with the PC's sound (Windows) and a
+  gentle estimated rhythm without it (Settings → Background; off with Reduce motion).
+- **A lyric card to share.** Press <kbd>C</kbd> (or the quote-card button at the top), tap the lines you want, and get a
+  picture in the album's colors with the cover, the song and the artist, as a **9:16 story** (the text stays clear of
+  TikTok's and Instagram's buttons and caption), a 4:5 post or a square. **Save** it, **copy** it to paste into a post
+  or chat, or **share** it straight from the share sheet (the Android app).
 - **A scene for songs without lyrics.** Instrumentals and songs LRCLIB doesn't have show an orb or a mirrored
   equalizer in the album's colors that punches on every beat; big beats send a shockwave across the screen
   (Settings → Songs without lyrics).
@@ -123,6 +130,7 @@ The page walks you through it. Full guide: **[docs/SETUP.md](docs/SETUP.md)**. J
 | <kbd>Y</kbd> | Next lyrics style |
 | <kbd>L</kbd> | Lyrics only (hide the player) |
 | <kbd>F</kbd> | Fullscreen (the buttons fade out until you move the mouse) |
+| <kbd>C</kbd> | Lyric card: pick lines and save or share a picture of them |
 | <kbd>R</kbd> | Recording view for TikTok: a full-screen 9:16 frame with no buttons (<kbd>Esc</kbd> leaves it) |
 | <kbd>−</kbd> / <kbd>+</kbd> | Spotify volume down / up |
 | <kbd>[</kbd> / <kbd>]</kbd> | Show lyrics 0.1s later / earlier (every song) |

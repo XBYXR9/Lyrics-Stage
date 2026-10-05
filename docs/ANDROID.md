@@ -50,6 +50,10 @@ Controlling playback (play, pause, skip, seek) needs Spotify Premium. Showing ly
 | Beat flash and bars follow the real sound | ❌ (estimated rhythm) | ✅ on Windows |
 | Updates itself | ❌ (install the new APK) | ✅ |
 
+The **lyric card** (the quote-card button, or <kbd>C</kbd> with a keyboard) is shared with Android's own share sheet, since
+the app's web view can't download a file or copy a picture: pick the lines, tap **Share…**, and send the picture to
+TikTok, Instagram, Messages or Photos.
+
 The bars and the beat flash use the **estimated rhythm** on Android. Android doesn't let one app listen to what another
 app plays (and Spotify is one of the apps that can opt out), so there is no real-sound option there.
 
