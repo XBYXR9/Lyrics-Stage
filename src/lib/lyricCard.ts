@@ -4,7 +4,7 @@
 // The pieces that decide what goes where (which lines, how the text wraps and how big it can be) are plain
 // functions that take a "measure" for text width, so they can be tested without a screen. drawCard paints it all.
 
-import type { LyricLine, Palette } from './types';
+import type { LyricLine, Palette, StyleId } from './types';
 
 export type CardFormat = 'story' | 'post' | 'square';
 export type CardLook = 'cover' | 'gradient';
@@ -215,9 +215,33 @@ export function cardFileName(title: string, artist: string): string {
 
 // ---- Painting ---------------------------------------------------------------------------------------------
 
+/** How the lyrics are written on the card: the same fonts and feel as the lyric styles on the main screen. */
+export interface CardTextStyle {
+  /** The CSS variable holding the font list (null: the page's Apple Music font). */
+  fontVar: string | null;
+  weight: number;
+  italic: boolean;
+  upper: boolean;
+  center: boolean;
+  /** The text color: white, or the cover's accent color. */
+  accent: boolean;
+  /** A colored glow around the letters (the neon look). */
+  glow: boolean;
+}
+
+export const CARD_TEXT_STYLES: Record<StyleId, CardTextStyle> = {
+  apple: { fontVar: null, weight: 800, italic: false, upper: false, center: false, accent: false, glow: false },
+  karaoke: { fontVar: null, weight: 900, italic: false, upper: false, center: true, accent: true, glow: false },
+  neon: { fontVar: '--font-neon', weight: 400, italic: false, upper: false, center: true, accent: false, glow: true },
+  spotlight: { fontVar: '--font-serif', weight: 600, italic: true, upper: false, center: true, accent: false, glow: false },
+  kinetic: { fontVar: '--font-poster', weight: 400, italic: false, upper: true, center: true, accent: true, glow: false },
+};
+
 export interface CardOptions {
   format: CardFormat;
   look: CardLook;
+  /** Which lyric style the text is written in. */
+  textStyle: StyleId;
   lines: CardLine[];
   title: string;
   artist: string;
@@ -233,10 +257,11 @@ export interface CardOptions {
 const COVER = 168;
 
 /** The text font from the page's own style (the one the Apple Music look uses), with plain fallbacks. */
-export function cardFontFamily(): string {
+export function cardFontFamily(variable: string | null = null): string {
   const fallback = `'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans Arabic', system-ui, sans-serif`;
   try {
-    return getComputedStyle(document.documentElement).getPropertyValue('--font-apple').trim() || fallback;
+    const css = getComputedStyle(document.documentElement);
+    return css.getPropertyValue(variable ?? '--font-apple').trim() || css.getPropertyValue('--font-apple').trim() || fallback;
   } catch {
     return fallback;
   }
@@ -327,9 +352,12 @@ export function drawCard(canvas: HTMLCanvasElement, o: CardOptions): LyricLayout
   const x1 = w - spec.side;
   const y0 = spec.top;
   const y1 = h - spec.bottom;
+  const ts = CARD_TEXT_STYLES[o.textStyle] ?? CARD_TEXT_STYLES.apple;
+  const lyricFamily = ts.fontVar ? cardFontFamily(ts.fontVar) : o.family;
   const font = (weight: number, size: number) => `${weight} ${size}px ${o.family}`;
+  const lyricFont = (size: number) => `${ts.italic ? 'italic ' : ''}${ts.weight} ${size}px ${lyricFamily}`;
   const measure: Measure = (text, size) => {
-    ctx.font = font(800, size);
+    ctx.font = lyricFont(size);
     return ctx.measureText(text).width;
   };
   const textWidth = (text: string, weight: number, size: number) => {
@@ -392,20 +420,26 @@ export function drawCard(canvas: HTMLCanvasElement, o: CardOptions): LyricLayout
 
   // The lyrics, as big as they can be, in the middle of what is left.
   const areaH = Math.max(120, bottom - top);
-  const layout = layoutLyrics(o.lines, x1 - x0, areaH, measure);
+  const lines = ts.upper ? o.lines.map((l) => ({ ...l, text: l.text.toLocaleUpperCase() })) : o.lines;
+  const layout = layoutLyrics(lines, x1 - x0, areaH, measure);
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.4)';
-  ctx.shadowBlur = 30;
-  ctx.shadowOffsetY = 4;
-  ctx.fillStyle = 'rgba(255,255,255,0.97)';
-  ctx.font = font(800, layout.size);
+  ctx.shadowColor = ts.glow ? o.palette.accent : 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = ts.glow ? 36 : 30;
+  ctx.shadowOffsetY = ts.glow ? 0 : 4;
+  ctx.fillStyle = ts.accent ? o.palette.accent : 'rgba(255,255,255,0.97)';
+  ctx.font = lyricFont(layout.size);
   const rowH = layout.size * layout.leading;
   let y = top + Math.max(0, (areaH - layout.height) / 2);
   layout.rows.forEach((row, k) => {
     if (row.lineStart && k > 0) y += layout.size * layout.lineGap;
     ctx.direction = row.rtl ? 'rtl' : 'ltr';
-    ctx.textAlign = row.rtl ? 'right' : 'left';
-    ctx.fillText(row.text, row.rtl ? x1 : x0, y + rowH / 2);
+    if (ts.center) {
+      ctx.textAlign = 'center';
+      ctx.fillText(row.text, (x0 + x1) / 2, y + rowH / 2);
+    } else {
+      ctx.textAlign = row.rtl ? 'right' : 'left';
+      ctx.fillText(row.text, row.rtl ? x1 : x0, y + rowH / 2);
+    }
     y += rowH;
   });
   ctx.restore();
