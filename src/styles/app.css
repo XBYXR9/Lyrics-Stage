@@ -1170,6 +1170,8 @@ kbd {
 }
 
 .toggle {
+  /* keeps the hidden checkbox inside its row: otherwise focusing it scrolls the whole panel back up */
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1737,4 +1739,11 @@ kbd {
   border-color: rgba(255, 255, 255, 0.5);
   color: #fff;
   font-weight: 600;
+}
+
+/* Lyric card: the style picker wraps onto several rows */
+.card-styles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }

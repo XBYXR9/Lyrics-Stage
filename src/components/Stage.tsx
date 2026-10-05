@@ -637,7 +637,7 @@ export function Stage({
 
       {panel === 'search' && <SearchPanel engine={engine} onClose={() => setPanel(null)} />}
       {panel === 'card' && track && (
-        <CardPanel track={track} lyrics={lyrics} playingMs={engine.clock.now() + settings.offsetMs + nudgeMs} onClose={() => setPanel(null)} />
+        <CardPanel track={track} lyrics={lyrics} appStyle={currentStyle} playingMs={engine.clock.now() + settings.offsetMs + nudgeMs} onClose={() => setPanel(null)} />
       )}
       {panel === 'settings' && (
         <SettingsPanel

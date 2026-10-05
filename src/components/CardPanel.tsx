@@ -6,6 +6,7 @@ import {
   cardFontFamily,
   cardLines,
   CARD_FORMATS,
+  CARD_TEXT_STYLES,
   defaultSelection,
   drawCard,
   MAX_CARD_LINES,
@@ -15,20 +16,23 @@ import {
 } from '../lib/lyricCard';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
 import { canvasToBlob, copyBlob, saveBlob, shareAbilities, shareBlob } from '../lib/shareCard';
-import type { Lyrics, Palette, TrackInfo } from '../lib/types';
+import type { Lyrics, Palette, StyleId, TrackInfo } from '../lib/types';
 import { CloseIcon } from './Icons';
 import { Section, Segmented, Toggle } from './SettingsPanel';
+import { STYLES } from './styles';
 import { toast } from './Toasts';
 
 interface Prefs {
   format: CardFormat;
   look: CardLook;
+  /** 'current' follows the lyric style chosen in the app; otherwise one specific style. */
+  textStyle: 'current' | StyleId;
   showInfo: boolean;
   mark: boolean;
 }
 
 const PREFS_KEY = 'ls.card.v1';
-const DEFAULT_PREFS: Prefs = { format: 'story', look: 'cover', showInfo: true, mark: true };
+const DEFAULT_PREFS: Prefs = { format: 'story', look: 'cover', textStyle: 'current', showInfo: true, mark: true };
 
 /** What was chosen last time (a convenience, so it is fine when the browser keeps nothing). */
 function loadPrefs(): Prefs {
@@ -37,6 +41,7 @@ function loadPrefs(): Prefs {
     return {
       format: CARD_FORMATS.some((f) => f.id === raw.format) ? (raw.format as CardFormat) : DEFAULT_PREFS.format,
       look: raw.look === 'gradient' ? 'gradient' : 'cover',
+      textStyle: raw.textStyle && raw.textStyle in CARD_TEXT_STYLES ? (raw.textStyle as StyleId) : 'current',
       showInfo: raw.showInfo !== false,
       mark: raw.mark !== false,
     };
@@ -56,7 +61,13 @@ function savePrefs(p: Prefs) {
 /** Waits for the page's web fonts (so the picture uses them), but never for long: offline they never come. */
 const fontsReady = () =>
   Promise.race([
-    Promise.all([document.fonts?.load('800 60px Inter'), document.fonts?.load('600 40px Inter')]).catch(() => undefined),
+    Promise.all([
+      document.fonts?.load('800 60px Inter'),
+      document.fonts?.load('600 40px Inter'),
+      document.fonts?.load('400 60px Tilt Neon'),
+      document.fonts?.load('italic 600 60px Fraunces'),
+      document.fonts?.load('400 60px Anton'),
+    ]).catch(() => undefined),
     new Promise((resolve) => setTimeout(resolve, 1500)),
   ]);
 
@@ -64,9 +75,12 @@ export function CardPanel({
   track,
   lyrics,
   playingMs,
+  appStyle,
   onClose,
 }: {
   track: TrackInfo;
+  /** The lyric style showing in the app right now (what the card uses unless another one is picked). */
+  appStyle: StyleId;
   lyrics: Lyrics | null;
   /** Where the song is now, to start with the line being sung (null: no timing to go by). */
   playingMs: number | null;
@@ -121,6 +135,8 @@ export function CardPanel({
 
   const chosen = useMemo(() => lines.filter((l) => selected.includes(l.id)), [lines, selected]);
 
+  const textStyle: StyleId = prefs.textStyle === 'current' ? appStyle : prefs.textStyle;
+
   // Paint the picture again whenever anything it shows changes.
   useEffect(() => {
     const el = canvas.current;
@@ -129,6 +145,7 @@ export function CardPanel({
     const result: LyricLayout = drawCard(el, {
       format: prefs.format,
       look: prefs.look,
+      textStyle,
       lines: chosen.map((l) => ({ text: l.text, rtl: l.rtl })),
       title: track.name,
       artist: track.artists.join(', '),
@@ -139,7 +156,7 @@ export function CardPanel({
       family: cardFontFamily(),
     });
     setLayout((prev) => (prev && prev.shown === result.shown && prev.total === result.total ? prev : { shown: result.shown, total: result.total }));
-  }, [chosen, prefs, assets, fonts, track.name, track.artists, track.artUrl]);
+  }, [chosen, prefs, textStyle, assets, fonts, track.name, track.artists, track.artUrl]);
 
   // Show the lines that were picked at the start.
   useEffect(() => {
@@ -250,6 +267,27 @@ export function CardPanel({
                   : prefs.format === 'post'
                     ? 'For Instagram and most feeds.'
                     : 'Works everywhere.'}
+              </p>
+            </Section>
+
+            <Section title="Lyrics style">
+              <div className="card-styles" role="radiogroup" aria-label="Lyrics style on the card">
+                {[{ id: 'current' as const, name: 'Same as the app' }, ...STYLES].map((st) => (
+                  <button
+                    key={st.id}
+                    role="radio"
+                    aria-checked={prefs.textStyle === st.id}
+                    className={`btn small${prefs.textStyle === st.id ? ' primary' : ''}`}
+                    onClick={() => set({ textStyle: st.id })}
+                  >
+                    {st.name}
+                  </button>
+                ))}
+              </div>
+              <p className="hint">
+                {prefs.textStyle === 'current'
+                  ? 'The card is written in the lyric style you have on now, and follows it when you change it.'
+                  : 'The card uses this style, whatever the app is showing.'}
               </p>
             </Section>
 
