@@ -1,6 +1,20 @@
 // Messages between the desktop app's main process (which talks to the Spotify
 // app on this computer) and the page that draws the lyrics.
 
+/** Which music app the desktop app follows. */
+export type MusicApp = 'spotify' | 'apple' | 'youtube';
+
+export const MUSIC_APPS: MusicApp[] = ['spotify', 'apple', 'youtube'];
+
+/** The name people know each app by. */
+export const MUSIC_APP_LABEL: Record<MusicApp, string> = {
+  spotify: 'Spotify',
+  apple: 'Apple Music',
+  youtube: 'YouTube Music',
+};
+
+export const isMusicApp = (v: unknown): v is MusicApp => typeof v === 'string' && (MUSIC_APPS as string[]).includes(v);
+
 export interface DesktopTrack {
   /** "spotify:track:…" when the Spotify app tells us (macOS, Linux). */
   uri: string | null;
@@ -89,6 +103,10 @@ export interface LyricsStageDesktopApi {
   command(c: DesktopCommand): Promise<CommandResult>;
   /** Opens the Spotify app — on its search page when `query` is given. */
   openSpotify(query?: string): Promise<void>;
+  /** Opens the chosen music app (Apple Music, or YouTube Music in the browser), on its search page when `query` is given. */
+  openMusicApp(app: MusicApp, query?: string): Promise<void>;
+  /** Chooses which music app the desktop app follows. */
+  setMusicApp(app: MusicApp): Promise<void>;
   setAlwaysOnTop(on: boolean): Promise<void>;
   /** Windows: how the next "listen to the sound" request is answered, with the app's own page (default) or a screen source as the picture that goes with it. */
   setSoundSource(kind: 'frame' | 'screen'): Promise<void>;

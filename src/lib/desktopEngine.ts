@@ -8,20 +8,23 @@
 // and sends snapshots here; see electron/bridge/.
 
 import { findCover, type CoverQuery } from './cover';
-import type { DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi } from './desktopTypes';
+import { MUSIC_APP_LABEL, type DesktopCommand, type DesktopSnapshot, type LyricsStageDesktopApi, type MusicApp } from './desktopTypes';
 import { BaseEngine, clampVolume, type DeviceInfo, type Engine, type SpotifyAppStatus } from './engine';
 import type { TrackInfo } from './types';
 
 /** How long to wait before trying a cover lookup again for the same song. */
 const COVER_RETRY_MS = 20_000;
 
-export const SPOTIFY_APP_DEVICE: DeviceInfo = {
-  id: 'spotify-app',
-  name: 'Spotify app',
+/** The one "device" of the desktop app: the music app on this computer. */
+export const appDevice = (app: MusicApp): DeviceInfo => ({
+  id: `${app}-app`,
+  name: app === 'spotify' ? 'Spotify app' : MUSIC_APP_LABEL[app],
   type: 'Computer',
   isActive: true,
   isThisBrowser: false,
-};
+});
+
+export const SPOTIFY_APP_DEVICE: DeviceInfo = appDevice('spotify');
 
 /** Turns what the Spotify app reports into the track shape the rest of the app uses. */
 export function snapshotToTrack(s: DesktopSnapshot): TrackInfo | null {
@@ -51,6 +54,8 @@ export class DesktopEngine extends BaseEngine implements Engine {
   readonly canPlayHere = false;
   private off: (() => void) | null = null;
   private api: LyricsStageDesktopApi;
+  private readonly app: MusicApp;
+  private readonly device: DeviceInfo;
   private waitTimer: ReturnType<typeof setTimeout> | undefined;
   private findCover: (q: CoverQuery) => Promise<string | null>;
   /** Covers we looked up ourselves, for songs the player gave no cover for. */
@@ -60,9 +65,11 @@ export class DesktopEngine extends BaseEngine implements Engine {
   /** Cover pictures from the player that didn't load. */
   private brokenCovers = new Set<string>();
 
-  constructor(api: LyricsStageDesktopApi, coverFinder: (q: CoverQuery) => Promise<string | null> = findCover) {
+  constructor(api: LyricsStageDesktopApi, coverFinder: (q: CoverQuery) => Promise<string | null> = findCover, app: MusicApp = 'spotify') {
     super();
     this.api = api;
+    this.app = app;
+    this.device = appDevice(app);
     this.findCover = coverFinder;
   }
 
@@ -86,7 +93,8 @@ export class DesktopEngine extends BaseEngine implements Engine {
 
   // The re-sync (see BaseEngine): only where the Spotify app tells us the position (not Linux).
   protected canResync() {
-    return this.state.spotifyApp?.exactPosition === true;
+    // Pausing and resuming to refresh the position is a trick for Spotify's Automix; other apps don't need it.
+    return this.app === 'spotify' && this.state.spotifyApp?.exactPosition === true;
   }
   protected async sendPause() {
     await this.send({ type: 'pause' });
@@ -103,7 +111,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
       const p: Partial<typeof this.state> = {};
       if (!sameStatus(this.state.spotifyApp, spotifyApp)) p.spotifyApp = spotifyApp;
       if (this.state.problem !== (s.problem ?? null)) p.problem = s.problem ?? null;
-      if (this.state.device !== SPOTIFY_APP_DEVICE) p.device = SPOTIFY_APP_DEVICE;
+      if (this.state.device !== this.device) p.device = this.device;
       if (typeof s.volume === 'number' && s.volume !== this.state.volume && !this.volumeSettling()) p.volume = s.volume;
       return p;
     };
@@ -178,7 +186,7 @@ export class DesktopEngine extends BaseEngine implements Engine {
 
   private async send(c: DesktopCommand) {
     const res = await this.api.command(c);
-    if (!res.ok) throw new Error(res.error ?? 'Spotify didn’t respond. Is the Spotify app open?');
+    if (!res.ok) throw new Error(res.error ?? `${MUSIC_APP_LABEL[this.app]} didn’t respond. Is it open?`);
     return res;
   }
 
@@ -231,17 +239,17 @@ export class DesktopEngine extends BaseEngine implements Engine {
   }
 
   async addToQueue() {
-    throw new Error('Add songs to your queue in the Spotify app.');
+    throw new Error(this.app === 'spotify' ? 'Add songs to your queue in the Spotify app.' : `Add songs to your queue in ${MUSIC_APP_LABEL[this.app]} itself.`);
   }
 
-  /** Search happens in the Spotify app itself. */
+  /** Search happens in the music app itself. */
   async search(query: string): Promise<TrackInfo[]> {
-    await this.api.openSpotify(query.trim() || undefined);
+    await this.openApp(query.trim() || undefined);
     return [];
   }
 
   async listDevices() {
-    return [SPOTIFY_APP_DEVICE];
+    return [this.device];
   }
 
   async transferTo() {}
@@ -249,6 +257,10 @@ export class DesktopEngine extends BaseEngine implements Engine {
   async enableBrowserPlayer() {}
 
   openSpotify() {
-    return this.api.openSpotify();
+    return this.openApp();
+  }
+
+  private openApp(query?: string) {
+    return this.app === 'spotify' ? this.api.openSpotify(query) : this.api.openMusicApp(this.app, query);
   }
 }

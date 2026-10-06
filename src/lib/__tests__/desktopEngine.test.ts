@@ -20,6 +20,8 @@ function fakeApi() {
       return { ok: true };
     },
     openSpotify: vi.fn(async () => {}),
+    openMusicApp: vi.fn(async () => {}),
+    setMusicApp: async () => {},
     setAlwaysOnTop: async () => {},
     setSoundSource: async () => {},
     onUpdate: () => () => {},

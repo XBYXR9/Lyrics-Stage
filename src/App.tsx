@@ -8,6 +8,7 @@ import { DesktopEngine } from './lib/desktopEngine';
 import { desktopApi } from './lib/desktopTypes';
 import { SpotifyEngine, type Engine } from './lib/engine';
 import { isNativeApp } from './lib/nativeApp';
+import { getSettings, useSettings } from './lib/settings';
 
 // "desktop": the desktop app, following the Spotify app on this computer.
 // "spotify": signed in to Spotify, using the Spotify Web API (needs a developer
@@ -44,7 +45,7 @@ function initialMode(): Mode {
     /* ignore */
   }
   if (demo) return 'demo';
-  if (desktopApi()) return signedInOnDesktop() ? 'spotify' : 'desktop';
+  if (desktopApi()) return signedInOnDesktop() && getSettings().musicApp === 'spotify' ? 'spotify' : 'desktop';
   if (window.location.pathname === '/callback') return 'loading';
   if (isLoggedIn()) return 'spotify';
   return 'setup';
@@ -83,14 +84,23 @@ export default function App() {
     });
   }, [mode]);
 
+  // Desktop app: tell it which music app to follow (and again whenever that is changed in Settings).
+  const { musicApp } = useSettings();
+  useEffect(() => {
+    void desktopApi()?.setMusicApp(musicApp);
+    // Signed in to Spotify's own data only makes sense for Spotify: other apps are followed on this computer.
+    if (musicApp !== 'spotify' && desktopApi()) setMode((m) => (m === 'spotify' ? 'desktop' : m));
+  }, [musicApp]);
+
   const engine: Engine | null = useMemo(() => {
     // Spotify's web player can't run in the desktop app or Android's web view: the music plays in a Spotify app.
     if (mode === 'spotify') return new SpotifyEngine({ browserPlayer: !desktopApi() && !isNativeApp() });
     if (mode === 'demo') return new DemoEngine();
     const api = desktopApi();
-    if (mode === 'desktop' && api) return new DesktopEngine(api);
+    if (mode === 'desktop' && api) return new DesktopEngine(api, undefined, musicApp);
     return null;
-  }, [mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, musicApp]);
 
   useEffect(() => {
     if (!engine) return;

@@ -2,7 +2,7 @@
 // info the volume/media pop-up shows: "System Media Transport Controls").
 // A small PowerShell script (built into Windows) prints the state 4 times a
 // second and takes commands (play, pause, skip, seek) on its input, one per line.
-import type { DesktopSnapshot } from '../../src/lib/desktopTypes';
+import { MUSIC_APP_LABEL, type DesktopSnapshot, type MusicApp } from '../../src/lib/desktopTypes';
 import { JsonLineProcess } from './child';
 import type { CommandReply, DesktopCommand, SpotifyBridge } from './types';
 
@@ -28,8 +28,22 @@ $propsType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMed
 $streamType = [Windows.Storage.Streams.IRandomAccessStreamWithContentType]
 $mgr = Await ($mgrType::RequestAsync()) $mgrType
 
+# The music app to follow: the script is started with $ls_app set to 'spotify', 'apple' or 'youtube'.
+# YouTube Music runs in a browser (or in its own app), so every browser's media session counts, and the one that is playing wins.
 function Get-Spotify {
-  $mgr.GetSessions() | Where-Object { $_.SourceAppUserModelId -like '*spotify*' } | Select-Object -First 1
+  $app = if ($null -eq $ls_app) { 'spotify' } else { $ls_app }
+  $all = @($mgr.GetSessions())
+  if ($app -eq 'apple') {
+    $found = @($all | Where-Object { $_.SourceAppUserModelId -match 'applemusic|itunes' })
+  } elseif ($app -eq 'youtube') {
+    $found = @($all | Where-Object { $_.SourceAppUserModelId -match 'youtube|chrome|msedge|firefox|brave|opera|vivaldi' })
+  } else {
+    $found = @($all | Where-Object { $_.SourceAppUserModelId -like '*spotify*' })
+  }
+  if ($found.Count -le 1) { return ($found | Select-Object -First 1) }
+  $playing = $found | Where-Object { $_.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing' } | Select-Object -First 1
+  if ($playing) { return $playing }
+  return ($found | Select-Object -First 1)
 }
 
 function Read-Art($props) {
@@ -343,10 +357,16 @@ export function parseWindowsLine(raw: unknown, prev: WindowsState): { snapshot: 
   };
 }
 
-function windowsCommandError(c: DesktopCommand): string {
-  if (c.type === 'seek') return 'Spotify doesn’t allow seeking from Windows media controls.';
-  if (c.type === 'volume') return 'Couldn’t change Spotify’s volume. Is Spotify playing?';
-  return 'Spotify didn’t accept that.';
+function windowsCommandError(c: DesktopCommand, app: MusicApp): string {
+  const name = MUSIC_APP_LABEL[app];
+  if (c.type === 'seek') return `${name} doesn’t allow seeking from Windows media controls.`;
+  if (c.type === 'volume') return app === 'spotify' ? 'Couldn’t change Spotify’s volume. Is Spotify playing?' : `Change the volume in ${name} itself.`;
+  return `${name} didn’t accept that.`;
+}
+
+/** The PowerShell script for one music app. */
+export function smtcScriptFor(app: MusicApp): string {
+  return `$ls_app = '${app}'\n${SMTC_SCRIPT}`;
 }
 
 /** PowerShell wants scripts as base64 UTF-16LE for -EncodedCommand. */
@@ -357,13 +377,14 @@ export function encodePowerShell(script: string): string {
 export class WindowsBridge implements SpotifyBridge {
   private loop: JsonLineProcess | null = null;
   private state: WindowsState = WINDOWS_START;
+  constructor(private readonly app: MusicApp = 'spotify') {}
   private nextId = 1;
   private waiting = new Map<number, (reply: Record<string, unknown>) => void>();
 
   start(onSnapshot: (s: DesktopSnapshot) => void) {
     this.loop = new JsonLineProcess(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodePowerShell(SMTC_SCRIPT)],
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodePowerShell(smtcScriptFor(this.app))],
       (o) => {
         const msg = o as Record<string, unknown>;
         if ('reply' in msg) {
@@ -386,13 +407,13 @@ export class WindowsBridge implements SpotifyBridge {
   }
 
   command(c: DesktopCommand): Promise<CommandReply | void> {
-    if (c.type === 'openUri') return Promise.reject(new Error('Open songs from the Spotify app.'));
+    if (c.type === 'openUri') return Promise.reject(new Error(`Open songs from ${MUSIC_APP_LABEL[this.app]} itself.`));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => {
           this.waiting.delete(id);
-          reject(new Error('Spotify didn’t respond. Is the Spotify app open?'));
+          reject(new Error(`${MUSIC_APP_LABEL[this.app]} didn’t respond. Is it open?`));
         },
         // The first volume change sets up the volume helper, which takes a moment.
         c.type === 'volume' ? 15000 : 5000,
@@ -400,12 +421,12 @@ export class WindowsBridge implements SpotifyBridge {
       this.waiting.set(id, (reply) => {
         clearTimeout(timer);
         if (reply.ok === true) resolve(typeof reply.volume === 'number' ? { volume: reply.volume } : undefined);
-        else reject(new Error(windowsCommandError(c)));
+        else reject(new Error(windowsCommandError(c, this.app)));
       });
       if (!this.loop?.send(JSON.stringify({ ...c, id }))) {
         clearTimeout(timer);
         this.waiting.delete(id);
-        reject(new Error('Still connecting to Spotify — try again in a second.'));
+        reject(new Error(`Still connecting to ${MUSIC_APP_LABEL[this.app]} — try again in a second.`));
       }
     });
   }

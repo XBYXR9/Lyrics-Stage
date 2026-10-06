@@ -234,6 +234,11 @@ export const CARD_TEXT_STYLES: Record<StyleId, CardTextStyle> = {
   karaoke: { fontVar: null, weight: 900, italic: false, upper: false, center: true, accent: true, glow: false },
   neon: { fontVar: '--font-neon', weight: 400, italic: false, upper: false, center: true, accent: false, glow: true },
   spotlight: { fontVar: '--font-serif', weight: 600, italic: true, upper: false, center: true, accent: false, glow: false },
+  typewriter: { fontVar: '--font-type', weight: 400, italic: false, upper: false, center: false, accent: false, glow: false },
+  flow: { fontVar: null, weight: 900, italic: false, upper: false, center: true, accent: true, glow: false },
+  retro: { fontVar: '--font-retro', weight: 400, italic: false, upper: true, center: true, accent: false, glow: true },
+  minimal: { fontVar: null, weight: 500, italic: false, upper: false, center: true, accent: false, glow: false },
+  depth: { fontVar: null, weight: 800, italic: false, upper: false, center: true, accent: false, glow: true },
   kinetic: { fontVar: '--font-poster', weight: 400, italic: false, upper: true, center: true, accent: true, glow: false },
 };
 

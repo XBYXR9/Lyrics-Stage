@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { applyColorTheme } from '../lib/colorTheme';
+import { useSettings } from '../lib/settings';
+import { getTranslation, cachedTranslation, type Translation } from '../lib/translate';
 import type { Engine, EngineState } from '../lib/engine';
 import { getLyrics, hasCachedLyrics } from '../lib/lyrics';
 import { FALLBACK_PALETTE, getPalette } from '../lib/palette';
@@ -95,10 +98,54 @@ export function usePalette(url: string | null | undefined): { palette: Palette; 
       alive = false;
     };
   }, [url]);
-  if (!url) return { palette: FALLBACK_PALETTE, ready: true };
+  const { colorTheme, customColor } = useSettings();
+  // The chosen color theme goes over the cover's colors (nothing changes with "Album colors").
+  const raw = !url ? FALLBACK_PALETTE : state.palette;
+  const palette = useMemo(() => applyColorTheme(raw, colorTheme, customColor), [raw, colorTheme, customColor]);
+  if (!url) return { palette, ready: true };
   // Keep showing the previous palette until the new one is ready (no flash).
-  return { palette: state.palette, ready: state.url === url };
+  return { palette, ready: state.url === url };
 }
+
+export interface TranslationResult {
+  /** One entry per lyric line, or null while there is nothing to show (off, loading, or it failed). */
+  lines: string[] | null;
+  loading: boolean;
+}
+
+/**
+ * The translation of a song's lyric lines into the language chosen in Settings. Nothing is asked for while the
+ * setting is off. When the song is already in that language, there is nothing to show.
+ */
+export function useTranslation(track: TrackInfo | null, lyrics: Lyrics | null): TranslationResult {
+  const { translate, translateTo } = useSettings();
+  const key = track?.key ?? null;
+  const lines = lyrics && lyrics.kind === 'synced' ? lyrics.lines : null;
+  const [state, setState] = useState<{ id: string; result: Translation | null; loading: boolean }>({ id: '', result: null, loading: false });
+  const id = `${key}|${translateTo}|${lines?.length ?? 0}`;
+
+  useEffect(() => {
+    if (!translate || !key || !lines || !lines.length) return;
+    const hit = cachedTranslation(key, translateTo, lines.length);
+    if (hit) {
+      setState({ id, result: hit, loading: false });
+      return;
+    }
+    const abort = new AbortController();
+    setState({ id, result: null, loading: true });
+    getTranslation(key, lines, translateTo, abort.signal).then(
+      (result) => !abort.signal.aborted && setState({ id, result, loading: false }),
+      () => !abort.signal.aborted && setState({ id, result: null, loading: false }),
+    );
+    return () => abort.abort();
+  }, [translate, key, translateTo, lines]);
+
+  if (!translate || state.id !== id) return { lines: null, loading: translate && !!lines };
+  const from = state.result?.from.toLowerCase().split('-')[0] ?? '';
+  const sameLanguage = !!from && from === translateTo.toLowerCase().split('-')[0];
+  return { lines: sameLanguage ? null : (state.result?.lines ?? null), loading: state.loading };
+}
+
 
 /**
  * Keeps something on screen while it plays an exit animation. `mounted` stays

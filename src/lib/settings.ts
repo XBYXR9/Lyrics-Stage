@@ -1,8 +1,11 @@
 // User preferences, saved in this browser.
 import { useSyncExternalStore } from 'react';
+import type { MusicApp } from './desktopTypes';
 import type { StyleChoice } from './types';
 
-export type BackgroundMode = 'art' | 'fluid';
+/** The moving album art, flowing colors, a still blurred cover, a calm gradient, plain black, or the user's own picture. */
+export type BackgroundMode = 'art' | 'fluid' | 'cover' | 'gradient' | 'black' | 'image';
+export type { MusicApp };
 export type WordSweep = 'estimated' | 'real-only' | 'off';
 export type BreakVisualChoice = 'bars' | 'dots';
 /** How a strong beat shows: nothing, a glow and ring behind the lyrics, a wash over the whole screen, a glowing screen edge, or a little kick of the lyrics. */
@@ -53,12 +56,31 @@ export interface Settings {
   alwaysOnTop: boolean;
   /** The recording view (TikTok) shows the song's cover, name and artist at the top of the frame. */
   recordInfo: boolean;
+  /** Colors: "album" takes them from each cover; otherwise a ready-made theme, or "custom" with `customColor`. */
+  colorTheme: string;
+  /** The highlight color for the "custom" color theme (#rrggbb). */
+  customColor: string;
+  /** Remember the lyric style and the timing nudge for each song. */
+  rememberPerSong: boolean;
+  /** Show a translation of the line being sung. */
+  translate: boolean;
+  /** The language to translate into (a code such as "en" or "ar"). */
+  translateTo: string;
+  /** Desktop app: which music app to follow. */
+  musicApp: MusicApp;
 }
 
 const KEY = 'ls.settings.v1';
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** The page's own language, as a translation target ("en" when unknown). */
+function defaultLanguage(): string {
+  const code = (typeof navigator !== 'undefined' ? navigator.language : 'en').toLowerCase();
+  if (code.startsWith('zh')) return code.includes('tw') || code.includes('hk') || code.includes('hant') ? 'zh-TW' : 'zh-CN';
+  return code.split('-')[0] || 'en';
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   style: 'apple',
@@ -81,6 +103,12 @@ export const DEFAULT_SETTINGS: Settings = {
   lyricsOnly: false,
   alwaysOnTop: false,
   recordInfo: true,
+  colorTheme: 'album',
+  customColor: '#ff5a8a',
+  rememberPerSong: true,
+  translate: false,
+  translateTo: defaultLanguage(),
+  musicApp: 'spotify',
 };
 
 /**

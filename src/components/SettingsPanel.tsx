@@ -8,6 +8,12 @@ import { BEAT_PREVIEW_EVENT } from '../lib/beat';
 import { desktopApi } from '../lib/desktopTypes';
 import { isNativeApp } from '../lib/nativeApp';
 import type { EngineKind } from '../lib/engine';
+import { COLOR_THEMES, isHexColor, themeAccent } from '../lib/colorTheme';
+import { MUSIC_APP_LABEL, MUSIC_APPS } from '../lib/desktopTypes';
+import { forgetAllSongs, getSongPrefs, useRememberedCount, useSongPrefs } from '../lib/songMemory';
+import { cancelSleepTimer, formatLeft, SLEEP_CHOICES, startSleepTimer, useSleepState } from '../lib/sleepTimer';
+import { isTranslateLanguage, TRANSLATE_LANGUAGES } from '../lib/translate';
+import { clearWallpaper, setWallpaperFromFile, useWallpaper } from '../lib/wallpaper';
 import { updateSettings, type BeatStyle, type Settings } from '../lib/settings';
 import type { StyleChoice, Vibe } from '../lib/types';
 import { CloseIcon, PortraitIcon } from './Icons';
@@ -29,6 +35,10 @@ const previewBeat = () => window.dispatchEvent(new Event(BEAT_PREVIEW_EVENT));
 
 export function SettingsPanel({
   settings,
+  styleChoice,
+  onPickStyle,
+  songKey,
+  onForgetSong,
   vibe,
   typicalBlendMs,
   engineKind,
@@ -42,6 +52,14 @@ export function SettingsPanel({
   onRecord,
 }: {
   settings: Settings;
+  /** The lyric style in use for the song playing now (a saved choice for this song, or the general one). */
+  styleChoice: StyleChoice;
+  /** Picks a lyric style (for every song, and for this one when songs are remembered). */
+  onPickStyle: (choice: StyleChoice) => void;
+  /** The song playing now, if any. */
+  songKey: string | null;
+  /** Forgets what is saved for the song playing now. */
+  onForgetSong: () => void;
   vibe: Vibe | null;
   typicalBlendMs: number | null;
   engineKind: EngineKind;
@@ -81,9 +99,9 @@ export function SettingsPanel({
             {choices.map((c) => (
               <button
                 key={c.id}
-                className={`style-card sc-${c.id}${settings.style === c.id ? ' selected' : ''}`}
-                onClick={() => set({ style: c.id })}
-                aria-pressed={settings.style === c.id}
+                className={`style-card sc-${c.id}${styleChoice === c.id ? ' selected' : ''}`}
+                onClick={() => onPickStyle(c.id)}
+                aria-pressed={styleChoice === c.id}
               >
                 <span className="sc-preview" aria-hidden>
                   Aa
@@ -93,6 +111,12 @@ export function SettingsPanel({
               </button>
             ))}
           </div>
+          <Toggle
+            checked={settings.rememberPerSong}
+            onChange={(v) => set({ rememberPerSong: v })}
+            label="Remember the style and timing for each song"
+          />
+          <RememberedInfo songKey={settings.rememberPerSong ? songKey : null} onForgetSong={onForgetSong} />
           {vibe && (
             <p className="hint">
               This song feels <b>{vibe.label}</b>
@@ -101,6 +125,10 @@ export function SettingsPanel({
             </p>
           )}
         </Section>
+
+        <ColorsSection settings={settings} />
+
+        <TranslationSection settings={settings} />
 
         <Section title="Word-by-word highlight">
           <Segmented
@@ -279,20 +307,30 @@ export function SettingsPanel({
 
         <Section title="Background">
           <Segmented
+            wrap
             value={settings.background}
             onChange={(v) => set({ background: v })}
             options={[
               { value: 'art', label: 'Album art' },
               { value: 'fluid', label: 'Color flow' },
+              { value: 'cover', label: 'Still cover' },
+              { value: 'gradient', label: 'Calm gradient' },
+              { value: 'black', label: 'Black' },
+              { value: 'image', label: 'My picture' },
             ]}
           />
+          {settings.background === 'image' && <WallpaperPicker />}
           <Toggle checked={settings.backgroundBeat} onChange={(v) => set({ backgroundBeat: v })} label="Background moves with the beat" />
           <p className="hint">
-            The background swells a few percent on every beat and settles again, softly, with no change in brightness.
-            It follows the real beat with <b>Follow your PC’s sound</b> (Windows); without it, it follows a gentle
-            estimated rhythm, so it can be a little off. It’s off with Reduce motion.
+            <b>Album art</b> and <b>Color flow</b> drift slowly; <b>Still cover</b> is the cover, big and blurred; <b>Calm
+            gradient</b> is the same colors, much slower; <b>Black</b> is plain black. With <b>Background moves with the
+            beat</b> the moving looks swell a few percent on every beat and settle again, softly, with no change in
+            brightness. It follows the real beat with <b>Follow your PC’s sound</b> (Windows); without it, it follows a
+            gentle estimated rhythm, so it can be a little off. It’s off with Reduce motion.
           </p>
         </Section>
+
+        <SleepSection />
 
         <Section title="Song transitions">
           <Toggle
@@ -359,7 +397,9 @@ export function SettingsPanel({
           </p>
         </Section>
 
-        {desktopApp && engineKind !== 'demo' && (
+        {desktopApp && <MusicAppSection settings={settings} />}
+
+        {desktopApp && engineKind !== 'demo' && settings.musicApp === 'spotify' && (
           <Section title="Spotify connection">
             {engineKind === 'desktop' ? (
               <>
@@ -447,13 +487,16 @@ export function Segmented<T extends string>({
   value,
   onChange,
   options,
+  wrap = false,
 }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
+  /** Let the buttons go onto several rows (for many choices). */
+  wrap?: boolean;
 }) {
   return (
-    <div className="segmented" role="radiogroup">
+    <div className={`segmented${wrap ? ' wrap' : ''}`} role="radiogroup">
       {options.map((o) => (
         <button
           key={o.value}
@@ -596,6 +639,211 @@ function TimingReport({ header }: { header: () => string[] }) {
         Copy timing report
       </button>
       {text && <textarea className="report-text" readOnly rows={7} value={text} onFocus={(e) => e.currentTarget.select()} />}
+    </Section>
+  );
+}
+
+/** What is saved for songs: for the one playing now, and how many in all. */
+function RememberedInfo({ songKey, onForgetSong }: { songKey: string | null; onForgetSong: () => void }) {
+  const saved = useSongPrefs(songKey);
+  const count = useRememberedCount();
+  if (!songKey) {
+    return <p className="hint">Each song keeps its own lyric style and timing nudge. Off, every song uses the style you pick here.</p>;
+  }
+  const bits = [saved?.style && 'a lyric style', saved?.nudgeMs && 'a timing nudge'].filter(Boolean).join(' and ');
+  return (
+    <>
+      <p className="hint">
+        Pick a style or nudge the timing while a song plays and it comes back the next time that song plays.{' '}
+        {bits ? <>This song has {bits} saved.</> : 'Nothing is saved for this song yet.'}
+      </p>
+      <div className="row wrap-row">
+        {saved && getSongPrefs(songKey) && (
+          <button className="btn small" onClick={onForgetSong}>
+            Forget this song
+          </button>
+        )}
+        {count > 0 && (
+          <button
+            className="btn small"
+            onClick={() => {
+              forgetAllSongs();
+              toast('Forgot every saved song');
+            }}
+          >
+            Forget all {count} saved {count === 1 ? 'song' : 'songs'}
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Ready-made color themes, or one color of the user's own, instead of each cover's colors. */
+function ColorsSection({ settings }: { settings: Settings }) {
+  return (
+    <Section title="Colors">
+      <div className="theme-grid" role="radiogroup" aria-label="Color theme">
+        {COLOR_THEMES.map((t) => {
+          const swatch = t.id === 'custom' ? settings.customColor : t.accent;
+          return (
+            <button
+              key={t.id}
+              role="radio"
+              aria-checked={settings.colorTheme === t.id}
+              className={`theme-chip${settings.colorTheme === t.id ? ' selected' : ''}`}
+              onClick={() => updateSettings({ colorTheme: t.id })}
+            >
+              <span
+                className={`theme-dot${t.id === 'album' ? ' album' : ''}`}
+                style={t.id === 'album' ? undefined : { background: swatch }}
+                aria-hidden
+              />
+              {t.name}
+            </button>
+          );
+        })}
+      </div>
+      {settings.colorTheme === 'custom' && (
+        <label className="row color-pick">
+          <input
+            type="color"
+            value={isHexColor(settings.customColor) ? settings.customColor : '#ff5a8a'}
+            onChange={(e) => updateSettings({ customColor: e.target.value })}
+            aria-label="Your color"
+          />
+          <span className="value left">{settings.customColor}</span>
+        </label>
+      )}
+      <p className="hint">
+        {themeAccent(settings.colorTheme, settings.customColor)
+          ? 'The highlights, glows and color backgrounds use this color on every song. The Album art look still shows the cover.'
+          : 'The colors come from each song’s cover.'}
+      </p>
+    </Section>
+  );
+}
+
+/** A translation of the line being sung, in the language the user prefers. */
+function TranslationSection({ settings }: { settings: Settings }) {
+  const known = isTranslateLanguage(settings.translateTo);
+  return (
+    <Section title="Translation">
+      <Toggle checked={settings.translate} onChange={(v) => updateSettings({ translate: v })} label="Show a translation under the lyrics" />
+      <label className="field">
+        <span>My language</span>
+        <select
+          value={known ? settings.translateTo : 'en'}
+          onChange={(e) => updateSettings({ translateTo: e.target.value })}
+          disabled={!settings.translate}
+          aria-label="Translate into"
+        >
+          {TRANSLATE_LANGUAGES.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="hint">
+        A small translation of the line being sung shows at the bottom, in the language you pick. Songs already in your
+        language show nothing. The lyrics are sent to Google Translate to do this, and each song is only sent once; the
+        translation is then kept in this browser. It needs the internet, and only works for lyrics with timing.
+      </p>
+    </Section>
+  );
+}
+
+/** The sleep timer: pause the music after a while and dim the screen. */
+function SleepSection() {
+  const sleep = useSleepState();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (sleep.endsAt === null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [sleep.endsAt]);
+  return (
+    <Section title="Sleep timer">
+      <div className="row wrap-row">
+        {SLEEP_CHOICES.map((m) => (
+          <button key={m} className="btn small" onClick={() => startSleepTimer(m)}>
+            {m} min
+          </button>
+        ))}
+        {sleep.endsAt !== null && (
+          <button className="btn small" onClick={cancelSleepTimer}>
+            Cancel
+          </button>
+        )}
+      </div>
+      <p className="hint">
+        {sleep.endsAt !== null ? (
+          <>
+            The music pauses in <b>{formatLeft(sleep.endsAt - now)}</b>.{' '}
+          </>
+        ) : (
+          'Pick a time and the music pauses when it is up. '
+        )}
+        The screen slowly dims over the last minute, then goes dark until you touch it. It only lasts until you close
+        the app.
+      </p>
+    </Section>
+  );
+}
+
+/** "Background: My picture": choose a picture file from this computer or phone. */
+function WallpaperPicker() {
+  const picture = useWallpaper();
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      await setWallpaperFromFile(file);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'That picture didn’t work.', 'error');
+    }
+  };
+  return (
+    <div className="wallpaper">
+      {picture && <img className="wallpaper-thumb" src={picture} alt="Your background picture" />}
+      <label className="btn small">
+        {picture ? 'Change picture' : 'Choose a picture'}
+        <input type="file" accept="image/*" hidden onChange={(e) => void pick(e.target.files?.[0])} />
+      </label>
+      {picture && (
+        <button className="btn small" onClick={clearWallpaper}>
+          Remove
+        </button>
+      )}
+      {!picture && <p className="hint">Pick a picture and it becomes the background (it is kept in this browser only).</p>}
+    </div>
+  );
+}
+
+/** Desktop app: which music app to follow. */
+function MusicAppSection({ settings }: { settings: Settings }) {
+  const app = settings.musicApp;
+  return (
+    <Section title="Music app">
+      <Segmented
+        value={app}
+        onChange={(v) => updateSettings({ musicApp: v })}
+        options={MUSIC_APPS.map((a) => ({ value: a, label: MUSIC_APP_LABEL[a] }))}
+      />
+      <p className="hint">
+        {app === 'spotify' &&
+          'Following the Spotify app on this computer (or your Spotify account, once you sign in).'}
+        {app === 'apple' &&
+          'Following the Apple Music app on this computer (Windows and Mac). Play and pause, skip and search open in Apple Music itself.'}
+        {app === 'youtube' &&
+          'Following whatever YouTube Music shows as playing on this computer, in your browser or in a YouTube Music app (Windows and Linux). If another tab or app is playing too, the one that is playing wins. Not on Mac yet.'}
+      </p>
+      {app !== 'spotify' && (
+        <p className="hint">
+          The lyrics are found by the song’s title and artist. Covers come from the app when it shares one, and are looked up
+          otherwise. Automix timing tricks are Spotify-only, and so is “Up next” (the app has to know your queue).
+        </p>
+      )}
     </Section>
   );
 }

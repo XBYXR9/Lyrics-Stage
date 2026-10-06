@@ -3,19 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useBeatFlash, useRealSound } from '../hooks/beatHooks';
 import { useEngineState, useKeepAwake, useLyrics, usePalette, usePresence, useRecordFrame } from '../hooks/hooks';
 import { loginStaysInApp, startLogin } from '../lib/auth';
-import { desktopApi, type UpdateStatus } from '../lib/desktopTypes';
+import { desktopApi, MUSIC_APP_LABEL, type MusicApp, type UpdateStatus } from '../lib/desktopTypes';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
 import { motionHintText, takeMotionHint } from '../lib/motionHint';
 import { isNativeApp, onNativeBack, setSystemBarsHidden } from '../lib/nativeApp';
 import { describeNudge, nudgeBy } from '../lib/nudge';
+import { forgetSong, getSongPrefs, rememberSong, useSongPrefs } from '../lib/songMemory';
+import { finishSleepTimer, formatLeft, getSleepState, sleepDim, SLEEP_FADE_MS, useSleepState, wakeFromSleep } from '../lib/sleepTimer';
+import { useWallpaper } from '../lib/wallpaper';
 import { showsScene } from '../lib/scene';
 import { FALLBACK_PALETTE, getPalette, loadImage } from '../lib/palette';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
 import { friendlyError } from '../lib/spotify';
 import { appVersion, isWatchingTiming, logTiming, sec } from '../lib/timingLog';
 import { coverMergeBlocker, visualTransitionMs } from '../lib/transitions';
-import type { Palette, StyleChoice } from '../lib/types';
+import type { Palette, StyleChoice, TrackInfo } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
 import { Background } from './Background';
 import { CardPanel } from './CardPanel';
@@ -112,6 +115,7 @@ export function Stage({
 }) {
   const state = useEngineState(engine);
   const settings = useSettings();
+  const wallpaper = useWallpaper();
   const [panel, setPanel] = useState<'search' | 'settings' | 'card' | null>(null);
   const panelRef = useRef(panel);
   panelRef.current = panel;
@@ -132,15 +136,25 @@ export function Stage({
   nudgeRef.current = songNudge;
   const trackKeyRef = useRef<string | null>(null);
   trackKeyRef.current = track?.key ?? null;
-  const nudgeMs = track && songNudge.key === track.key ? songNudge.ms : 0;
+  // With "Remember for each song" on, the nudge (and the lyric style) of a song come back the next time it plays.
+  const remembered = useSongPrefs(settings.rememberPerSong ? (track?.key ?? null) : null);
+  const nudgeMs = track && songNudge.key === track.key ? songNudge.ms : (remembered?.nudgeMs ?? 0);
   /** Shows the lyrics later (negative) or earlier (positive) for the song playing now; keys , . < > and the buttons in Settings. */
   const nudgeLyrics = useCallback((deltaMs: number) => {
     const key = trackKeyRef.current;
     if (!key) return;
-    const base = nudgeRef.current.key === key ? nudgeRef.current.ms : 0;
+    const saved = getSettings().rememberPerSong ? (getSongPrefs(key)?.nudgeMs ?? 0) : 0;
+    const base = nudgeRef.current.key === key ? nudgeRef.current.ms : saved;
     const ms = nudgeBy(base, deltaMs);
     setSongNudge({ key, ms });
+    if (getSettings().rememberPerSong) rememberSong(key, { nudgeMs: ms });
     toast(describeNudge(ms));
+  }, []);
+  /** Back to normal timing for the song playing now (and forgets the saved nudge). */
+  const resetNudge = useCallback(() => {
+    const key = trackKeyRef.current;
+    setSongNudge({ key, ms: 0 });
+    if (key) rememberSong(key, { nudgeMs: 0 });
   }, []);
   const hideControls = useHideControlsInFullscreen(panel !== null);
 
@@ -262,10 +276,17 @@ export function Stage({
     if (next.artUrl) loadImage(next.artUrl).catch(() => {});
   }, [next]);
 
+  /** Picks a lyric style: for every song, and (with "Remember for each song") for the song playing now. */
+  const pickStyle = useCallback((choice: StyleChoice) => {
+    updateSettings({ style: choice });
+    const key = trackKeyRef.current;
+    if (key && getSettings().rememberPerSong) rememberSong(key, { style: choice });
+  }, []);
   const cycleStyle = () => {
-    const cur = getSettings().style;
+    const key = trackKeyRef.current;
+    const cur = (getSettings().rememberPerSong && key ? getSongPrefs(key)?.style : undefined) ?? getSettings().style;
     const nextStyle = STYLE_ORDER[(STYLE_ORDER.indexOf(cur) + 1) % STYLE_ORDER.length];
-    updateSettings({ style: nextStyle });
+    pickStyle(nextStyle);
     toast(`Style: ${styleName(nextStyle)}`);
   };
 
@@ -371,7 +392,8 @@ export function Stage({
     }
   };
 
-  const currentStyle = settings.style === 'auto' ? vibe?.autoStyle ?? 'apple' : settings.style;
+  const styleChoice = remembered?.style ?? settings.style;
+  const currentStyle = styleChoice === 'auto' ? vibe?.autoStyle ?? 'apple' : styleChoice;
   // The desktop app window (whether it follows the Spotify app here or is signed in to Spotify).
   const desktop = desktopApi();
   const update = useAppUpdate();
@@ -418,7 +440,7 @@ export function Stage({
       </div>
     );
   } else if (!track && engine.kind === 'desktop') {
-    content = <DesktopIdle app={state.spotifyApp} onDemo={onDemo} onSignIn={onSignIn} />;
+    content = <DesktopIdle musicApp={settings.musicApp} app={state.spotifyApp} onDemo={onDemo} onSignIn={onSignIn} />;
   } else if (!track) {
     content = (
       <div className="msg idle">
@@ -449,7 +471,7 @@ export function Stage({
         engine={engine}
         change={change}
         currentTrack={track}
-        nudge={songNudge}
+        nudge={{ key: track?.key ?? null, ms: nudgeMs }}
         settings={settings}
         onSeek={(ms) => void run(engine.seek(ms))}
       />
@@ -477,6 +499,7 @@ export function Stage({
           artUrl={scene.url}
           palette={scene.palette}
           mode={settings.background}
+          wallpaper={wallpaper}
           motion={vibe?.motion ?? 0.8}
           transitionMs={transitionMs}
           reduceMotion={settings.reduceMotion}
@@ -555,7 +578,7 @@ export function Stage({
           {nudgeMs !== 0 && (
             <button
               className="pill nudge-pill"
-              onClick={() => setSongNudge({ key: null, ms: 0 })}
+              onClick={resetNudge}
               title="Back to normal timing for this song"
             >
               {describeNudge(nudgeMs)} · Reset
@@ -564,10 +587,10 @@ export function Stage({
           {engine.isDemo && <span className="pill hide-mobile">Demo · no sound</span>}
           {state.problem && !state.authExpired && <span className="pill warn">{state.problem}</span>}
           {desktop && track && state.spotifyApp && !state.spotifyApp.running && (
-            <span className="pill warn">Spotify is closed</span>
+            <span className="pill warn">{MUSIC_APP_LABEL[settings.musicApp]} is closed</span>
           )}
           {desktop && track && state.spotifyApp?.running && !state.spotifyApp.exactPosition && (
-            <span className="pill hide-mobile" title="Spotify's Linux app doesn't share the song position, so timing starts when each song starts. Tap a lyric line to sync.">
+            <span className="pill hide-mobile" title="This app doesn't share the song position, so timing starts when each song starts. Tap a lyric line to sync.">
               Timing estimated · tap a line to sync
             </span>
           )}
@@ -592,7 +615,7 @@ export function Stage({
           </button>
           <button className="style-btn" onClick={cycleStyle} title="Next lyrics style (Y)">
             <SparkleIcon width={16} height={16} />
-            <span>{settings.style === 'auto' ? `Auto · ${styleName(currentStyle)}` : styleName(settings.style)}</span>
+            <span>{styleChoice === 'auto' ? `Auto · ${styleName(currentStyle)}` : styleName(styleChoice)}</span>
           </button>
           <button
             className={`icon-btn${settings.lyricsOnly ? ' on' : ''}`}
@@ -626,6 +649,10 @@ export function Stage({
       {panel === 'settings' && (
         <SettingsPanel
           settings={settings}
+          styleChoice={styleChoice}
+          onPickStyle={pickStyle}
+          songKey={track?.key ?? null}
+          onForgetSong={() => track && forgetSong(track.key)}
           vibe={vibe}
           typicalBlendMs={state.typicalBlendMs}
           engineKind={engine.kind}
@@ -635,7 +662,7 @@ export function Stage({
           timingHeader={timingHeader}
           songNudgeMs={nudgeMs}
           onNudge={nudgeLyrics}
-          onResetNudge={() => setSongNudge({ key: null, ms: 0 })}
+          onResetNudge={resetNudge}
           onRecord={startRecording}
         />
       )}
@@ -651,22 +678,137 @@ export function Stage({
           </div>
         </div>
       )}
+      {!recording && track && state.nextTrack && (
+        <UpNext
+          engine={engine}
+          track={track}
+          next={state.nextTrack}
+          playing={state.isPlaying}
+          // After an Automix blend the next handover is most likely a blend too, so no card then.
+          blendExpected={change.transition.kind === 'blend'}
+        />
+      )}
+      <SleepOverlay engine={engine} />
       <Toasts />
     </div>
   );
 }
 
+/** How long before the end of a song the "Up next" card shows. */
+export const UP_NEXT_MS = 5000;
+
+/** A small card in the bottom corner for the last 5 seconds of a song: the next song and its cover. Not for Automix. */
+function UpNext({
+  engine,
+  track,
+  next,
+  playing,
+  blendExpected,
+}: {
+  engine: Engine;
+  track: TrackInfo;
+  next: TrackInfo;
+  playing: boolean;
+  blendExpected: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (blendExpected || !playing || track.durationMs <= 0 || next.key === track.key) {
+      setShow(false);
+      return;
+    }
+    const tick = () => {
+      const left = track.durationMs - engine.clock.now();
+      setShow(left > 0 && left <= UP_NEXT_MS);
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [engine, track.key, track.durationMs, next.key, playing, blendExpected]);
+  if (!show) return null;
+  return (
+    <div className="up-next glass" role="status" key={next.key}>
+      {next.artThumbUrl || next.artUrl ? <img src={next.artThumbUrl ?? next.artUrl ?? ''} alt="" /> : <span className="up-next-art" />}
+      <div className="up-next-text">
+        <div className="up-next-label">Up next</div>
+        <div className="up-next-title">{next.name}</div>
+        <div className="up-next-artist">{next.artists.join(', ')}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The sleep timer: the screen dims over the last minute, then the music pauses and the screen goes dark until it is
+ * touched. The timer itself lives in src/lib/sleepTimer.ts (it is started in Settings).
+ */
+function SleepOverlay({ engine }: { engine: Engine }) {
+  const sleep = useSleepState();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (sleep.endsAt === null) return;
+    let warned = false;
+    const tick = () => {
+      const t = Date.now();
+      setNow(t);
+      const left = (getSleepState().endsAt ?? Infinity) - t;
+      if (left <= 0) {
+        finishSleepTimer();
+        if (engine.getState().isPlaying) void engine.togglePlay().catch(() => {});
+      } else if (left <= SLEEP_FADE_MS && !warned) {
+        warned = true;
+        toast(`Sleep timer: the music pauses in ${formatLeft(left)}`);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [sleep.endsAt, engine]);
+  useEffect(() => {
+    if (!sleep.done) return;
+    const wake = () => wakeFromSleep();
+    window.addEventListener('keydown', wake);
+    return () => window.removeEventListener('keydown', wake);
+  }, [sleep.done]);
+  const dim = sleepDim(sleep.endsAt, sleep.done, now);
+  if (dim <= 0) return null;
+  return (
+    <div className={`sleep-dim${sleep.done ? ' done' : ''}`} style={{ opacity: dim }} onPointerDown={sleep.done ? wakeFromSleep : undefined}>
+      {sleep.done && <span>Good night. Tap anywhere to wake the screen.</span>}
+    </div>
+  );
+}
+
 /** What the desktop app shows while nothing is playing in the Spotify app. */
-function DesktopIdle({ app, onDemo, onSignIn }: { app: SpotifyAppStatus | null; onDemo?: () => void; onSignIn?: () => void }) {
-  const open = () => void desktopApi()?.openSpotify();
-  let title = 'Play something in Spotify';
-  let sub = 'Your lyrics show up here as soon as a song starts. Turn on Automix in Spotify (Settings → Playback) and the lyrics blend right along with it.';
+function DesktopIdle({
+  musicApp,
+  app,
+  onDemo,
+  onSignIn,
+}: {
+  musicApp: MusicApp;
+  app: SpotifyAppStatus | null;
+  onDemo?: () => void;
+  onSignIn?: () => void;
+}) {
+  const name = MUSIC_APP_LABEL[musicApp];
+  const open = () => void (musicApp === 'spotify' ? desktopApi()?.openSpotify() : desktopApi()?.openMusicApp(musicApp));
+  let title = `Play something in ${name}`;
+  let sub =
+    musicApp === 'spotify'
+      ? 'Your lyrics show up here as soon as a song starts. Turn on Automix in Spotify (Settings → Playback) and the lyrics blend right along with it.'
+      : 'Your lyrics show up here as soon as a song starts.';
   if (app?.problem) {
     title = 'One more step';
     sub = app.problem;
   } else if (!app?.running) {
-    title = 'Open Spotify to start';
-    sub = 'Log in to the Spotify app the usual way and play a song. Lyrics Stage follows along — no extra login needed.';
+    title = `Open ${name} to start`;
+    sub =
+      musicApp === 'spotify'
+        ? 'Log in to the Spotify app the usual way and play a song. Lyrics Stage follows along — no extra login needed.'
+        : musicApp === 'apple'
+          ? 'Play a song in the Apple Music app. Lyrics Stage follows along — no login needed.'
+          : 'Play a song on music.youtube.com (in your browser, or in a YouTube Music app). Lyrics Stage follows whatever your computer shows as playing.';
   }
   return (
     <div className="msg idle">
@@ -674,9 +816,9 @@ function DesktopIdle({ app, onDemo, onSignIn }: { app: SpotifyAppStatus | null; 
       <div className="msg-sub">{sub}</div>
       <div className="msg-actions">
         <button className="btn primary" onClick={open}>
-          Open Spotify
+          Open {name}
         </button>
-        {onSignIn && (
+        {onSignIn && musicApp === 'spotify' && (
           <button className="btn ghost" onClick={onSignIn}>
             Sign in with Spotify
           </button>

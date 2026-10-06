@@ -3,13 +3,15 @@
 // fade lasts as long as the songs overlap, and the old song's lyrics keep
 // moving in time while they fade — so the lyrics blend just like the audio.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { useLyrics, usePalette } from '../hooks/hooks';
+import { useFrame, useLatest, useLyrics, usePalette, useTranslation } from '../hooks/hooks';
 import { FixedClock, type Clock } from '../lib/clock';
 import type { Engine, TrackChange } from '../lib/engine';
+import { findLineIndex } from '../lib/lrc';
 import type { Settings } from '../lib/settings';
+import { useSongPrefs } from '../lib/songMemory';
 import { showsScene } from '../lib/scene';
 import { visualTransitionMs } from '../lib/transitions';
-import type { TrackInfo, TransitionKind } from '../lib/types';
+import type { Lyrics, TrackInfo, TransitionKind } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
 import { BeatScene } from './BeatScene';
 import { PlainLyrics } from './PlainLyrics';
@@ -119,7 +121,11 @@ function LyricsLayer({
   const { lyrics, loading, error, retry } = useLyrics(track);
   const { palette, ready } = usePalette(track.artUrl);
   const vibe = useMemo(() => analyzeVibe(lyrics, palette), [lyrics, palette]);
-  const styleId = settings.style === 'auto' ? vibe.autoStyle : settings.style;
+  // A style remembered for this song wins (when remembering is on).
+  const remembered = useSongPrefs(settings.rememberPerSong ? track.key : null);
+  const choice = remembered?.style ?? settings.style;
+  const styleId = choice === 'auto' ? vibe.autoStyle : choice;
+  const translation = useTranslation(track, lyrics);
   const live = layer.phase !== 'out';
   // What the instrumental breaks show (bars or dots), shared with every lyric style below.
   const breakVisual = useMemo(
@@ -203,6 +209,41 @@ function LyricsLayer({
       aria-hidden={!live}
     >
       <BreakVisualContext.Provider value={breakVisual}>{body}</BreakVisualContext.Provider>
+      {translation.lines && lyrics && lyrics.kind === 'synced' && (
+        <TranslationCaption lyrics={lyrics} translated={translation.lines} clock={layer.clock} offsetMs={settings.offsetMs + nudgeMs} />
+      )}
+    </div>
+  );
+}
+
+/** The translation of the line being sung, small, at the bottom of the screen. */
+function TranslationCaption({
+  lyrics,
+  translated,
+  clock,
+  offsetMs,
+}: {
+  lyrics: Lyrics;
+  translated: string[];
+  clock: Clock;
+  offsetMs: number;
+}) {
+  const [index, setIndex] = useState(-1);
+  const p = useLatest({ lyrics, clock, offsetMs });
+  const last = useRef(-1);
+  useFrame((now) => {
+    const { lyrics, clock, offsetMs } = p.current;
+    const idx = findLineIndex(lyrics.lines, clock.now(now) + offsetMs);
+    if (idx !== last.current) {
+      last.current = idx;
+      setIndex(idx);
+    }
+  });
+  const text = index >= 0 ? translated[index] : '';
+  if (!text) return null;
+  return (
+    <div className="translation" key={index} aria-label="Translation">
+      {text}
     </div>
   );
 }
