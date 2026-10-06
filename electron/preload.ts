@@ -17,7 +17,6 @@ const api: LyricsStageDesktopApi = {
   openSpotify: (query?: string) => ipcRenderer.invoke('ls:open-spotify', query),
   openMusicApp: (app: MusicApp, query?: string) => ipcRenderer.invoke('ls:open-music', app, query),
   setMusicApp: (app: MusicApp) => ipcRenderer.invoke('ls:music-app', app),
-  hostname: () => ipcRenderer.invoke('ls:hostname') as Promise<string>,
   setAlwaysOnTop: (on: boolean) => ipcRenderer.invoke('ls:always-on-top', on),
   setSoundSource: (kind: 'frame' | 'screen') => ipcRenderer.invoke('ls:sound-source', kind),
   onUpdate(cb) {

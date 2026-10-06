@@ -3,8 +3,8 @@
 // Opens the lyrics window and links it to the Spotify app on this computer
 // (see bridge/). You stay logged in to Spotify the normal way; no Spotify
 // developer account is needed, and Spotify's own Automix/Crossfade apply.
+import * as electron from 'electron';
 import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } from 'electron';
-import os from 'node:os';
 import path from 'node:path';
 import { isMusicApp, validateCommand, type DesktopSnapshot, type MusicApp } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
@@ -128,13 +128,23 @@ ipcMain.handle('ls:sound-source', (_event, kind: unknown) => {
   soundVideoSource = parseSoundSource(kind);
 });
 
-ipcMain.handle('ls:hostname', () => os.hostname());
-
 ipcMain.handle('ls:always-on-top', (_event, on: unknown) => {
   win?.setAlwaysOnTop(on === true, 'floating');
 });
 
-app.whenReady().then(() => {
+/**
+ * Spotify's music is copy protected (Widevine). This app is built on castLabs' Electron, which has Widevine: its
+ * `components` object loads the decryption module, and it must be ready before the page asks for it. A plain Electron
+ * has no `components`, and then the page simply finds out there is no DRM (src/lib/drm.ts).
+ */
+async function loadProtectedAudioSupport() {
+  const components = (electron as unknown as { components?: { whenReady(): Promise<unknown> } }).components;
+  if (!components) return;
+  await Promise.race([components.whenReady(), new Promise((resolve) => setTimeout(resolve, 20_000))]).catch(() => {});
+}
+
+app.whenReady().then(async () => {
+  await loadProtectedAudioSupport();
   // "Follow the real sound" (Windows, opt-in in Settings): when the lyrics page asks to
   // capture, hand it a copy of the sound going to the speakers and nothing else (the
   // "video" is just the app's own page, so the screen is never captured).

@@ -57,6 +57,11 @@
       }
     ],
     "electronUpdaterCompatibility": ">=2.16",
+    "electronVersion": "44.5.1+wvcus",
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/",
+      "customDir": "v44.5.1+wvcus"
+    },
     "directories": {
       "output": "release",
       "buildResources": "build"

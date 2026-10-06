@@ -22,7 +22,6 @@ function fakeApi() {
     openSpotify: vi.fn(async () => {}),
     openMusicApp: vi.fn(async () => {}),
     setMusicApp: async () => {},
-    hostname: async () => 'test-pc',
     setAlwaysOnTop: async () => {},
     setSoundSource: async () => {},
     onUpdate: () => () => {},
