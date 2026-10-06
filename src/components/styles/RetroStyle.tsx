@@ -61,7 +61,6 @@ export function RetroStyle(props: StyleProps) {
           )}
         </div>
       )}
-      <div className="rt-scan" aria-hidden />
     </div>
   );
 }

@@ -548,6 +548,9 @@ export function Stage({
             {content}
           </div>
         </main>
+
+        {/* Retro VHS: the tape look (scan lines, dark corners) is on the whole picture, not only on the lyrics side. */}
+        {currentStyle === 'retro' && track && <div className="retro-fx" aria-hidden />}
       </div>
 
       {recording && (
