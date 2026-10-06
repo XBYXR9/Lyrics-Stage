@@ -208,3 +208,24 @@ describe('Apple Music and YouTube Music', () => {
     expect(SMTC_SCRIPT).not.toContain('${');
   });
 });
+
+describe('Windows script file', () => {
+  it('runs the script from a file, so the command line stays short (Windows allows 32,767 characters)', async () => {
+    const { powershellFileArgs, writeScriptFile, smtcScriptFor, encodePowerShell } = await import('../bridge/windows');
+    const { readFileSync, rmSync } = await import('node:fs');
+    const path = await import('node:path');
+    const file = writeScriptFile('apple');
+    try {
+      const text = readFileSync(file, 'utf8');
+      expect(text.charCodeAt(0)).toBe(0xfeff); // byte order mark: Windows PowerShell reads it as UTF-8
+      expect(text.slice(1)).toBe(smtcScriptFor('apple'));
+      const args = powershellFileArgs(file);
+      expect(args).toEqual(expect.arrayContaining(['-File', file]));
+      expect(args.join(' ').length).toBeLessThan(1000);
+    } finally {
+      rmSync(path.dirname(file), { recursive: true, force: true });
+    }
+    // This is why: as -EncodedCommand the script no longer fits on a Windows command line.
+    expect(encodePowerShell(smtcScriptFor('youtube')).length).toBeGreaterThan(32_000);
+  });
+});
