@@ -5,12 +5,22 @@
 // send `positionMs: null` and the page counts time from the start of each
 // song. If a player ever reports a real position, we switch to trusting it.
 import * as dbus from 'dbus-next';
-import type { DesktopSnapshot, DesktopTrack } from '../../src/lib/desktopTypes';
+import { MUSIC_APP_LABEL, type DesktopSnapshot, type DesktopTrack, type MusicApp } from '../../src/lib/desktopTypes';
 import type { CommandReply, DesktopCommand, SpotifyBridge } from './types';
 
 const PLAYER_IFACE = 'org.mpris.MediaPlayer2.Player';
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 const NAME_RE = /^org\.mpris\.MediaPlayer2\.spotify/;
+/** YouTube Music: its own app first, then a browser (any player that plays it shows up on the bus). */
+const YOUTUBE_APP_RE = /^org\.mpris\.MediaPlayer2\.(youtube|youtube-music|youtubemusic|th-ch)/i;
+const BROWSER_RE = /^org\.mpris\.MediaPlayer2\.(chromium|chrome|brave|vivaldi|opera|edge|msedge|firefox)/i;
+
+/** Picks the player to follow among the names on the bus. Exported for tests. */
+export function pickPlayerName(names: string[], app: MusicApp): string | null {
+  if (app === 'spotify') return names.find((n) => NAME_RE.test(n)) ?? null;
+  if (app === 'youtube') return names.find((n) => YOUTUBE_APP_RE.test(n)) ?? names.find((n) => BROWSER_RE.test(n)) ?? null;
+  return null;
+}
 
 type VariantLike = { value: unknown } | undefined;
 
@@ -65,6 +75,7 @@ export function parseMpris(all: Record<string, VariantLike>): MprisState {
 }
 
 export class LinuxBridge implements SpotifyBridge {
+  constructor(private readonly app: MusicApp = 'spotify') {}
   private bus: dbus.MessageBus | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
   private busy = false;
@@ -127,7 +138,7 @@ export class LinuxBridge implements SpotifyBridge {
     const bus = this.getBus();
     const dbusObj = await bus.getProxyObject('org.freedesktop.DBus', '/org/freedesktop/DBus');
     const names: string[] = await dbusObj.getInterface('org.freedesktop.DBus').ListNames();
-    const name = names.find((n) => NAME_RE.test(n)) ?? null;
+    const name = pickPlayerName(names, this.app);
     if (!name) {
       this.reset();
       return false;
@@ -142,6 +153,7 @@ export class LinuxBridge implements SpotifyBridge {
   }
 
   private async read(): Promise<DesktopSnapshot> {
+    if (this.app === 'apple') return { ...this.base(), problem: 'Apple Music doesn’t have an app for Linux. Choose Spotify or YouTube Music in Settings.' };
     try {
       if (!(await this.connect())) return this.base();
       const all = (await this.props!.GetAll(PLAYER_IFACE)) as Record<string, VariantLike>;
@@ -161,13 +173,13 @@ export class LinuxBridge implements SpotifyBridge {
     } catch (err) {
       this.reset(/connect|ENOENT|ECONNREFUSED|closed/i.test(String(err)));
       const noBus = !process.env.DBUS_SESSION_BUS_ADDRESS && !process.env.XDG_RUNTIME_DIR;
-      return { ...this.base(), problem: noBus ? 'Can’t reach the desktop session (D-Bus) to find Spotify.' : undefined };
+      return { ...this.base(), problem: noBus ? `Can’t reach the desktop session (D-Bus) to find ${MUSIC_APP_LABEL[this.app]}.` : undefined };
     }
   }
 
   async command(c: DesktopCommand): Promise<CommandReply | void> {
     if (!(await this.connect().catch(() => false)) || !this.player) {
-      throw new Error('Spotify didn’t respond. Is the Spotify app open?');
+      throw new Error(`${MUSIC_APP_LABEL[this.app]} didn’t respond. Is it open?`);
     }
     const p = this.player;
     switch (c.type) {

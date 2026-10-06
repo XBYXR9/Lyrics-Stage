@@ -31,6 +31,8 @@
     sans-serif;
   --font-serif: 'Fraunces', 'Noto Sans Arabic', Georgia, 'Times New Roman', serif;
   --font-poster: 'Anton', Impact, 'Noto Sans Arabic', 'Arial Narrow', sans-serif;
+  --font-type: 'Special Elite', 'Courier New', 'Noto Sans Arabic', monospace;
+  --font-retro: 'VT323', 'Courier New', 'Noto Sans Arabic', monospace;
   --font-neon: 'Tilt Neon', 'Noto Sans Arabic', 'Inter', system-ui, sans-serif;
   --text: #fff;
   --text-dim: rgba(255, 255, 255, 0.62);
@@ -297,6 +299,32 @@ kbd {
   display: block;
   width: 100%;
   height: 100%;
+}
+.bg-canvas[hidden] {
+  display: none;
+}
+.bg-black {
+  background: #000;
+}
+.bg-black .bg-shade {
+  background: none;
+}
+.bg-photo {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  animation: bg-photo-in 0.9s ease-out;
+}
+.bg-photo.is-cover {
+  filter: blur(46px) saturate(1.35) brightness(0.8);
+  transform: scale(1.3);
+}
+@keyframes bg-photo-in {
+  from {
+    opacity: 0;
+  }
 }
 .bg-canvas.css-blur {
   filter: blur(40px) saturate(1.4);
@@ -1011,6 +1039,34 @@ kbd {
   font-style: italic;
   font-weight: 600;
 }
+.sc-typewriter .sc-preview {
+  font-family: var(--font-type);
+  font-size: 0.9em;
+}
+.sc-flow .sc-preview {
+  font-weight: 900;
+  background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  box-shadow: inset 0 0 0 44px rgba(0, 0, 0, 0.25);
+}
+.sc-retro .sc-preview {
+  font-family: var(--font-retro);
+  letter-spacing: 0.06em;
+  text-shadow:
+    2px 0 rgba(255, 40, 80, 0.8),
+    -2px 0 rgba(40, 220, 255, 0.8);
+}
+.sc-minimal .sc-preview {
+  font-weight: 400;
+  font-size: 0.8em;
+  letter-spacing: 0.08em;
+}
+.sc-depth .sc-preview {
+  font-weight: 800;
+  transform: perspective(120px) rotateX(24deg);
+}
 .sc-kinetic .sc-preview {
   font-family: var(--font-poster);
   transform: rotate(-6deg);
@@ -1719,4 +1775,174 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* The sleep timer: the screen dims over the last minute, then goes dark until it is touched. */
+.sleep-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: #000;
+  pointer-events: none;
+  transition: opacity 1s linear;
+  display: grid;
+  place-items: center;
+}
+.sleep-dim.done {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.sleep-dim span {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 14px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+/* "Up next": the last 5 seconds of a song */
+.up-next {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(300px, calc(100% - 32px));
+  padding: 8px 14px 8px 8px;
+  border-radius: 14px;
+  animation: up-next-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+}
+.up-next img,
+.up-next-art {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.12);
+}
+.up-next-text {
+  min-width: 0;
+}
+.up-next-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.up-next-title,
+.up-next-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.up-next-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+.up-next-artist {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+@keyframes up-next-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Settings: many-choice rows, color themes, picture picker */
+.segmented.wrap {
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.segmented.wrap button {
+  flex: 1 1 30%;
+}
+.row.wrap-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.theme-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.theme-chip.selected {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.16);
+}
+.theme-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+.theme-dot.album {
+  background: conic-gradient(#ff5a8a, #ffc83d, #3ddc97, #3da5ff, #9b6bff, #ff5a8a);
+}
+.color-pick {
+  margin-top: 10px;
+}
+.color-pick input[type='color'] {
+  width: 44px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.value.left {
+  text-align: left;
+}
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.field select {
+  flex: 1;
+  max-width: 240px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font: inherit;
+}
+.field select option {
+  color: #111;
+}
+.wallpaper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+.wallpaper-thumb {
+  width: 72px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
 }

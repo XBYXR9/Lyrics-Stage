@@ -1,7 +1,7 @@
 // Gives the lyrics page a small, safe API (`window.lyricsStage`) to talk to
 // the main process. The page gets no other access to the computer.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { CommandResult, DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi, SpotifyLoginResult, UpdateStatus } from '../src/lib/desktopTypes';
+import type { CommandResult, DesktopCommand, DesktopSnapshot, LyricsStageDesktopApi, MusicApp, SpotifyLoginResult, UpdateStatus } from '../src/lib/desktopTypes';
 
 const api: LyricsStageDesktopApi = {
   isDesktop: true,
@@ -15,6 +15,8 @@ const api: LyricsStageDesktopApi = {
   },
   command: (c: DesktopCommand) => ipcRenderer.invoke('ls:command', c) as Promise<CommandResult>,
   openSpotify: (query?: string) => ipcRenderer.invoke('ls:open-spotify', query),
+  openMusicApp: (app: MusicApp, query?: string) => ipcRenderer.invoke('ls:open-music', app, query),
+  setMusicApp: (app: MusicApp) => ipcRenderer.invoke('ls:music-app', app),
   setAlwaysOnTop: (on: boolean) => ipcRenderer.invoke('ls:always-on-top', on),
   setSoundSource: (kind: 'frame' | 'screen') => ipcRenderer.invoke('ls:sound-source', kind),
   onUpdate(cb) {

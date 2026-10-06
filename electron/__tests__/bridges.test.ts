@@ -177,3 +177,34 @@ describe('splitJsonLines', () => {
     expect(got).toEqual([{ a: 1 }, { b: 2 }]);
   });
 });
+
+describe('Apple Music and YouTube Music', () => {
+  it('follows Apple Music on a Mac through the Music app', async () => {
+    const { JXA_LOOP_MUSIC, macCommandScript, parseMacLine } = await import('../bridge/mac');
+    expect(JXA_LOOP_MUSIC).toContain("Application('Music')");
+    expect(JXA_LOOP_MUSIC).not.toContain('${');
+    expect(macCommandScript({ type: 'next' }, 'apple')).toBe('tell application "Music" to next track');
+    expect(macCommandScript({ type: 'next' })).toBe('tell application "Spotify" to next track');
+    const snap = parseMacLine({ running: true, state: 'playing', at: 5, position: 12.5, track: { id: null, name: 'Song', artist: 'Me', album: 'LP', duration: 200000, artwork: null } }, 'apple');
+    expect(snap.track).toMatchObject({ uri: null, title: 'Song', durationMs: 200000 });
+    expect(snap.positionMs).toBe(12500);
+    expect(parseMacLine({ installed: false }, 'apple').problem).toMatch(/Music app/);
+  });
+
+  it('picks the right player on Linux', async () => {
+    const { pickPlayerName } = await import('../bridge/linux');
+    const names = ['org.mpris.MediaPlayer2.spotify', 'org.mpris.MediaPlayer2.chromium.instance42', 'org.mpris.MediaPlayer2.youtube-music'];
+    expect(pickPlayerName(names, 'spotify')).toBe('org.mpris.MediaPlayer2.spotify');
+    expect(pickPlayerName(names, 'youtube')).toBe('org.mpris.MediaPlayer2.youtube-music');
+    expect(pickPlayerName(names.slice(0, 2), 'youtube')).toBe('org.mpris.MediaPlayer2.chromium.instance42');
+    expect(pickPlayerName(names, 'apple')).toBeNull();
+  });
+
+  it('tells the Windows script which app to follow', async () => {
+    const { smtcScriptFor, SMTC_SCRIPT } = await import('../bridge/windows');
+    expect(smtcScriptFor('apple').startsWith("$ls_app = 'apple'")).toBe(true);
+    expect(smtcScriptFor('youtube')).toContain(SMTC_SCRIPT);
+    expect(SMTC_SCRIPT).toContain('applemusic|itunes');
+    expect(SMTC_SCRIPT).not.toContain('${');
+  });
+});

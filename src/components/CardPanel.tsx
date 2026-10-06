@@ -67,6 +67,8 @@ const fontsReady = () =>
       document.fonts?.load('400 60px Tilt Neon'),
       document.fonts?.load('italic 600 60px Fraunces'),
       document.fonts?.load('400 60px Anton'),
+      document.fonts?.load('400 60px Special Elite'),
+      document.fonts?.load('400 60px VT323'),
     ]).catch(() => undefined),
     new Promise((resolve) => setTimeout(resolve, 1500)),
   ]);

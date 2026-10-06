@@ -5,19 +5,27 @@
 // developer account is needed, and Spotify's own Automix/Crossfade apply.
 import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
-import { validateCommand, type DesktopSnapshot } from '../src/lib/desktopTypes';
+import { isMusicApp, validateCommand, type DesktopSnapshot, type MusicApp } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
 import { mayHearSound, parseSoundSource, type SoundVideoSource } from './soundAccess';
 import { cancelSpotifyLogin, signInWithSpotify } from './spotifyLogin';
 import { startUpdates } from './updater';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
-const bridge = createBridge(process.platform);
+let musicApp: MusicApp = 'spotify';
+let bridge = createBridge(process.platform, musicApp);
 let win: BrowserWindow | null = null;
 let lastSnapshot: DesktopSnapshot | null = null;
 
 function isAppUrl(url: string) {
   return DEV_URL ? url.startsWith(DEV_URL) : url.startsWith('file://');
+}
+
+function startBridge() {
+  bridge.start((snapshot) => {
+    lastSnapshot = snapshot;
+    win?.webContents.send('ls:snapshot', snapshot);
+  });
 }
 
 function createWindow() {
@@ -77,6 +85,30 @@ ipcMain.handle('ls:open-spotify', async (_event, query: unknown) => {
   }
 });
 
+// Which music app to follow (Spotify, Apple Music or YouTube Music): the page asks for it when it opens and when it changes.
+ipcMain.handle('ls:music-app', (_event, raw: unknown) => {
+  if (!isMusicApp(raw) || raw === musicApp) return;
+  musicApp = raw;
+  bridge.stop();
+  lastSnapshot = null;
+  bridge = createBridge(process.platform, musicApp);
+  startBridge();
+});
+
+/** Opens a music app: Apple Music through its own link, YouTube Music in the browser. */
+ipcMain.handle('ls:open-music', async (_event, app: unknown, query: unknown) => {
+  const q = typeof query === 'string' ? query.trim().slice(0, 200) : '';
+  if (app === 'apple') {
+    try {
+      await shell.openExternal(q ? `music://music.apple.com/search?term=${encodeURIComponent(q)}` : 'music://');
+    } catch {
+      await shell.openExternal(q ? `https://music.apple.com/search?term=${encodeURIComponent(q)}` : 'https://music.apple.com/');
+    }
+  } else if (app === 'youtube') {
+    await shell.openExternal(q ? `https://music.youtube.com/search?q=${encodeURIComponent(q)}` : 'https://music.youtube.com/');
+  }
+});
+
 ipcMain.handle('ls:spotify-login', async (_event, authUrl: unknown) => {
   const result = await signInWithSpotify(authUrl, (url) => shell.openExternal(url));
   // Bring the app back to the front once the browser is done.
@@ -121,10 +153,7 @@ app.whenReady().then(() => {
   });
   createWindow();
   startUpdates(() => win);
-  bridge.start((snapshot) => {
-    lastSnapshot = snapshot;
-    win?.webContents.send('ls:snapshot', snapshot);
-  });
+  startBridge();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

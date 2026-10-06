@@ -17,8 +17,16 @@ songs together, the lyrics blend too.
 
 - **Apple Music–style lyrics.** Big bold lines. Words light up as they're sung, held notes glow, and lines glide into
   place one after another. Tap a line to jump to it, or scroll to look around.
-- **Five styles, plus Auto.** Apple Music, Karaoke (with a bouncing ball), Neon, Spotlight and Kinetic. **Auto** picks
-  one for each song based on how fast the words come and how colorful the cover is.
+- **Ten styles, plus Auto.** Apple Music, Karaoke (with a bouncing ball), Neon, Spotlight, Kinetic, Typewriter, Gradient flow,
+  Retro VHS, Minimal and 3D depth. **Auto** picks one that fits each song's pace and mood. Each song can keep its own
+  style and timing nudge.
+- **Your colors, backgrounds and a sleep timer.** Color themes (or one color of your own) instead of each cover's colors;
+  backgrounds: moving album art, color flow, a still blurred cover, a calm gradient, plain black or your own picture; and
+  a sleep timer that dims the screen and pauses the music.
+- **Translation.** A small translation of the line being sung, in the language you choose (can be switched off).
+- **Up next.** The last 5 seconds of a song show the next song and its cover in the corner (not during Automix blends).
+- **Apple Music and YouTube Music** (desktop app). Follow the Apple Music app (Windows, Mac) or YouTube Music (Windows, Linux)
+  instead of Spotify: choose it in Settings → Music app.
 - **Adapts to each song.** Colors come from the album cover. The background and scrolling move faster for energetic
   songs and slower for calm ones.
 - **Adapts to Spotify Automix & Crossfade.** The app spots when songs overlap and crossfades the lyrics and background
@@ -157,7 +165,7 @@ src/
   lib/            logic: engines (desktop, Web API, demo), clock, Automix detection,
                   lyrics lookup & parsing, color palette, song "vibe"
   components/     React UI: stage, player panel, search, settings, background
-    styles/       the lyric styles (Apple Music, Karaoke, Neon, Spotlight, Kinetic)
+    styles/       the lyric styles (Apple Music, Karaoke, Neon, Spotlight, Kinetic, Typewriter, Gradient flow, Retro VHS, Minimal, 3D depth)
   styles/         CSS
 scripts/          app build/dev scripts, and a fake Spotify for Linux development
 docs/             guides and screenshots

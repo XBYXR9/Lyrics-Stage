@@ -1,11 +1,16 @@
 import type { ComponentType } from 'react';
 import type { StyleChoice, StyleId } from '../../lib/types';
 import { AppleStyle } from './AppleStyle';
+import { DepthStyle } from './DepthStyle';
+import { FlowStyle } from './FlowStyle';
 import { KaraokeStyle } from './KaraokeStyle';
 import { KineticStyle } from './KineticStyle';
+import { MinimalStyle } from './MinimalStyle';
 import { NeonStyle } from './NeonStyle';
+import { RetroStyle } from './RetroStyle';
 import type { StyleProps } from './shared';
 import { SpotlightStyle } from './SpotlightStyle';
+import { TypewriterStyle } from './TypewriterStyle';
 
 export interface StyleMeta {
   id: StyleId;
@@ -40,6 +45,36 @@ export const STYLES: StyleMeta[] = [
     name: 'Kinetic',
     blurb: 'Words pop in like a poster — great for rap.',
     component: KineticStyle,
+  },
+  {
+    id: 'typewriter',
+    name: 'Typewriter',
+    blurb: 'Each line types itself out, letter by letter.',
+    component: TypewriterStyle,
+  },
+  {
+    id: 'flow',
+    name: 'Gradient flow',
+    blurb: 'Big words filled with slowly moving album colors.',
+    component: FlowStyle,
+  },
+  {
+    id: 'retro',
+    name: 'Retro VHS',
+    blurb: 'An old tape: scan lines, glitchy edges, a time code.',
+    component: RetroStyle,
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal',
+    blurb: 'One small, calm line at the bottom, like subtitles.',
+    component: MinimalStyle,
+  },
+  {
+    id: 'depth',
+    name: '3D depth',
+    blurb: 'The line you hear is up front; the rest sink back.',
+    component: DepthStyle,
   },
 ];
 

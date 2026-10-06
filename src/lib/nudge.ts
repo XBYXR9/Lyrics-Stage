@@ -1,5 +1,6 @@
 // A temporary timing nudge for the song that is playing (keys , and .). It
-// doesn't touch Spotify: only when the lyrics show. It resets with the next song.
+// doesn't touch Spotify: only when the lyrics show. It resets with the next song, unless "Remember for each song" is on
+// (see songMemory.ts), when it comes back the next time that song plays.
 
 /** The most a song can be nudged either way. */
 export const MAX_NUDGE_MS = 30_000;

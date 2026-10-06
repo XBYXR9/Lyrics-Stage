@@ -1,7 +1,11 @@
-// The living background. Two looks:
-//  • "art":   several copies of the album cover, slowly turning and drifting,
-//             heavily blurred — the Apple Music full-screen look.
-//  • "fluid": soft blobs of the cover's colors flowing around.
+// The living background. Looks:
+//  • "art":      several copies of the album cover, slowly turning and drifting,
+//                heavily blurred — the Apple Music full-screen look.
+//  • "fluid":    soft blobs of the cover's colors flowing around.
+//  • "gradient": the same blobs, very slow and calm.
+//  • "cover":    the cover, big, still and blurred.
+//  • "black":    plain black (easy on the eyes, and on an OLED screen).
+//  • "image":    the user's own picture (see src/lib/wallpaper.ts).
 // It's drawn small (about 128px wide) and stretched, which keeps it cheap.
 // Speed follows the song's energy, and on song changes the new background
 // fades in over the same time as the lyric transition (long for Automix blends).
@@ -26,6 +30,7 @@ export function Background({
   artUrl,
   palette,
   mode,
+  wallpaper,
   motion,
   transitionMs,
   reduceMotion,
@@ -35,6 +40,8 @@ export function Background({
   artUrl: string | null;
   palette: Palette;
   mode: BackgroundMode;
+  /** The user's own picture, for the "image" look. */
+  wallpaper: string | null;
   motion: number;
   transitionMs: number;
   reduceMotion: boolean;
@@ -45,8 +52,11 @@ export function Background({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layers = useRef<BgLayer[]>([]);
-  const opts = useRef({ mode, motion, reduceMotion, beatMotion });
-  opts.current = { mode, motion, reduceMotion, beatMotion };
+  // "image" without a picture, or "cover" without a cover, falls back to the moving cover.
+  const look: BackgroundMode = mode === 'image' && !wallpaper ? 'art' : mode === 'cover' && !artUrl ? 'fluid' : mode;
+  const onCanvas = look === 'art' || look === 'fluid' || look === 'gradient';
+  const opts = useRef({ mode: look, motion, reduceMotion, beatMotion, onCanvas });
+  opts.current = { mode: look, motion, reduceMotion, beatMotion, onCanvas };
   const punch = useRef(new BeatPunch());
 
   // Beats push the background (only while that is switched on).
@@ -107,6 +117,7 @@ export function Background({
         canvas.style.transform = '';
         pushed = false;
       }
+      if (!opts.current.onCanvas) return; // a still picture or black: nothing to draw
       if (now - last < 33) return; // ~30 fps is plenty for a blurry background
       const dt = Math.min(100, now - last);
       last = now;
@@ -126,7 +137,7 @@ export function Background({
         sctx.fillStyle = layer.palette.base;
         sctx.fillRect(0, 0, w, h);
         if (mode === 'art' && layer.img) drawArt(sctx, layer.img, t, w, h, alpha);
-        else drawFluid(sctx, layer.palette, t, w, h, alpha);
+        else drawFluid(sctx, layer.palette, mode === 'gradient' ? t * 0.2 : t, w, h, alpha);
       }
       sctx.globalAlpha = 1;
 
@@ -148,9 +159,11 @@ export function Background({
   }, []);
 
   return (
-    <div className="bg" aria-hidden>
-      <canvas ref={canvasRef} className="bg-canvas" />
-      <div className="bg-shade" style={{ '--shade': shade.toFixed(3) } as CSSProperties} />
+    <div className={`bg bg-${look}`} aria-hidden>
+      <canvas ref={canvasRef} className="bg-canvas" hidden={!onCanvas} />
+      {look === 'image' && wallpaper && <div className="bg-photo" style={{ backgroundImage: `url(${wallpaper})` }} />}
+      {look === 'cover' && artUrl && <div className="bg-photo is-cover" key={artUrl} style={{ backgroundImage: `url("${artUrl}")` }} />}
+      <div className="bg-shade" style={{ '--shade': (look === 'black' ? 0 : shade).toFixed(3) } as CSSProperties} />
     </div>
   );
 }

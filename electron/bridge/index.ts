@@ -1,16 +1,17 @@
+import type { MusicApp } from '../../src/lib/desktopTypes';
 import { LinuxBridge } from './linux';
 import { MacBridge } from './mac';
 import type { SpotifyBridge } from './types';
 import { WindowsBridge } from './windows';
 
-/** Picks the right way to talk to the Spotify app for this operating system. */
-export function createBridge(platform: NodeJS.Platform): SpotifyBridge {
+/** Picks the right way to talk to the music app (Spotify, Apple Music or YouTube Music) for this operating system. */
+export function createBridge(platform: NodeJS.Platform, app: MusicApp = 'spotify'): SpotifyBridge {
   switch (platform) {
     case 'darwin':
-      return new MacBridge();
+      return new MacBridge(app);
     case 'win32':
-      return new WindowsBridge();
+      return new WindowsBridge(app);
     default:
-      return new LinuxBridge();
+      return new LinuxBridge(app);
   }
 }

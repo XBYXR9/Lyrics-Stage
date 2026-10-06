@@ -194,7 +194,7 @@ function DevicePicker({ engine, state }: { engine: Engine; state: EngineState })
       <div className="devices">
         <span className="device-btn static">
           <DeviceIcon width={16} height={16} />
-          <span>Spotify app on this computer</span>
+          <span>{state.device?.name ?? 'Spotify app'} on this computer</span>
         </span>
       </div>
     );
