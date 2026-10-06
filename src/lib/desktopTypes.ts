@@ -108,6 +108,8 @@ export interface LyricsStageDesktopApi {
   /** Chooses which music app the desktop app follows. */
   setMusicApp(app: MusicApp): Promise<void>;
   setAlwaysOnTop(on: boolean): Promise<void>;
+  /** The name of this computer (Spotify names the Spotify app on it the same, which is how the app finds its own device). */
+  hostname(): Promise<string>;
   /** Windows: how the next "listen to the sound" request is answered, with the app's own page (default) or a screen source as the picture that goes with it. */
   setSoundSource(kind: 'frame' | 'screen'): Promise<void>;
   /** Current update status right away, then every change. Returns an unsubscribe function. */

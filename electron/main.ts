@@ -4,6 +4,7 @@
 // (see bridge/). You stay logged in to Spotify the normal way; no Spotify
 // developer account is needed, and Spotify's own Automix/Crossfade apply.
 import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } from 'electron';
+import os from 'node:os';
 import path from 'node:path';
 import { isMusicApp, validateCommand, type DesktopSnapshot, type MusicApp } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
@@ -126,6 +127,8 @@ let soundVideoSource: SoundVideoSource = 'frame';
 ipcMain.handle('ls:sound-source', (_event, kind: unknown) => {
   soundVideoSource = parseSoundSource(kind);
 });
+
+ipcMain.handle('ls:hostname', () => os.hostname());
 
 ipcMain.handle('ls:always-on-top', (_event, on: unknown) => {
   win?.setAlwaysOnTop(on === true, 'floating');

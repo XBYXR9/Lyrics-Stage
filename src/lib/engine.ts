@@ -10,6 +10,7 @@
 
 import { getAccessToken } from './auth';
 import { PlaybackClock, type Clock } from './clock';
+import { isNativeApp } from './nativeApp';
 import { desktopApi, type LyricsStageDesktopApi } from './desktopTypes';
 import { localIsPlaying, type LocalSnapshot } from './localPlayer';
 import { isRefusal, loadProbeMemory, PROBE_REFRESH_MIN_MS, ProbeMemory, saveProbeMemory, type SilentProbe } from './silentProbes';
@@ -859,7 +860,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   private enabling: Promise<void> | null = null;
 
   async enableBrowserPlayer() {
-    if (!this.canPlayHere) throw new Error('Play music in a Spotify app (this computer, your phone or a speaker) and the lyrics follow along.');
+    if (!this.canPlayHere) throw new Error('Play music in a Spotify app (this computer, your phone or a speaker) and pick it with the device button.');
     if (this.player) {
       await this.player.activateElement().catch(() => {});
       return;
@@ -1017,12 +1018,56 @@ export class SpotifyEngine extends BaseEngine implements Engine {
    * Plays on the current device. If there isn't one, starts the browser player
    * and plays there instead.
    */
+  /** Spotify names the app on a computer after the computer ("MY-PC", "Yahias-MacBook.local" → the same base name). */
+  private static baseName = (name: string) => name.trim().toLowerCase().split('.')[0];
+
+  /** This device's own Spotify player in the list of devices (this computer's Spotify app, or this phone's), if it is there. */
+  private async findThisDevice(): Promise<ApiDevice | null> {
+    const devices = ((await spotify.getDevices().catch(() => null))?.devices ?? []).filter((d) => !!d.id);
+    if (this.local) {
+      const computers = devices.filter((d) => d.type === 'Computer');
+      const mine = SpotifyEngine.baseName(await this.local.hostname().catch(() => ''));
+      return (mine && computers.find((d) => SpotifyEngine.baseName(d.name) === mine)) || (computers.length === 1 ? computers[0] : null);
+    }
+    if (isNativeApp()) return devices.find((d) => d.type === 'Smartphone') ?? null;
+    return null;
+  }
+
+  /** Finds this device's player, opening the Spotify app on this computer and waiting for it if needed. */
+  private async wakeThisDevice(): Promise<ApiDevice | null> {
+    let device = await this.findThisDevice();
+    if (!device && this.local) {
+      await this.local.openSpotify().catch(() => {});
+      for (let i = 0; i < 10 && !device; i++) {
+        await sleep(1000);
+        device = await this.findThisDevice();
+      }
+    }
+    return device;
+  }
+
   private async playOrWakeBrowser(body: Parameters<typeof spotify.play>[0]) {
     try {
       await spotify.play(body);
     } catch (err) {
       const noDevice = err instanceof SpotifyError && (err.status === 404 || err.reason === 'NO_ACTIVE_DEVICE');
       if (!noDevice) throw err;
+      // No device is playing right now. In the desktop app and the phone app the music plays on the device the app is
+      // running on (the Spotify app there), so start that one, opening Spotify first if it isn't running.
+      if (!this.canPlayHere || this.state.browserPlayer.status === 'error') {
+        const device = await this.wakeThisDevice();
+        if (device?.id) {
+          try {
+            await spotify.play(body, device.id);
+          } catch {
+            // A device that has only just started can take a moment to be ready.
+            await sleep(1200);
+            await spotify.play(body, device.id);
+          }
+          return;
+        }
+        throw new SpotifyError(404, this.local ? 'Spotify isn’t open on this computer. Open the Spotify app here, then press play again (or pick another device with the button at the bottom).' : isNativeApp() ? 'Open the Spotify app on this phone, then press play again (or pick another device with the button at the bottom).' : 'No Spotify device found. Open Spotify on a device, then press play again.', 'NO_ACTIVE_DEVICE');
+      }
       await this.enableBrowserPlayer();
       const id = await this.waitForBrowserPlayer();
       if (!id) throw err;
