@@ -890,3 +890,14 @@
 .shell .toasts {
   bottom: calc(var(--pb-h) + 24px);
 }
+
+.side-update {
+  margin: 8px 12px 0;
+  justify-content: center;
+  text-align: center;
+}
+@media (max-width: 900px) {
+  .side-update {
+    display: none;
+  }
+}
