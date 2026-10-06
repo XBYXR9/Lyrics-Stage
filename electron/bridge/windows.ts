@@ -2,6 +2,9 @@
 // info the volume/media pop-up shows: "System Media Transport Controls").
 // A small PowerShell script (built into Windows) prints the state 4 times a
 // second and takes commands (play, pause, skip, seek) on its input, one per line.
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { MUSIC_APP_LABEL, type DesktopSnapshot, type MusicApp } from '../../src/lib/desktopTypes';
 import { JsonLineProcess } from './child';
 import type { CommandReply, DesktopCommand, SpotifyBridge } from './types';
@@ -369,6 +372,21 @@ export function smtcScriptFor(app: MusicApp): string {
   return `$ls_app = '${app}'\n${SMTC_SCRIPT}`;
 }
 
+/**
+ * The script is run from a file, not from the command line: Windows allows only 32,767 characters there, and the script
+ * as base64 UTF-16 (what -EncodedCommand needs) is already close to that, so a few more lines made it fail to start.
+ * The file starts with a byte order mark so Windows PowerShell reads it as UTF-8.
+ */
+export function writeScriptFile(app: MusicApp): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'lyrics-stage-'));
+  const file = path.join(dir, 'media.ps1');
+  writeFileSync(file, `\uFEFF${smtcScriptFor(app)}`, 'utf8');
+  return file;
+}
+
+/** How PowerShell is started for a script file. */
+export const powershellFileArgs = (file: string) => ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file];
+
 /** PowerShell wants scripts as base64 UTF-16LE for -EncodedCommand. */
 export function encodePowerShell(script: string): string {
   return Buffer.from(script, 'utf16le').toString('base64');
@@ -381,10 +399,13 @@ export class WindowsBridge implements SpotifyBridge {
   private nextId = 1;
   private waiting = new Map<number, (reply: Record<string, unknown>) => void>();
 
+  private scriptFile: string | null = null;
+
   start(onSnapshot: (s: DesktopSnapshot) => void) {
+    this.scriptFile = writeScriptFile(this.app);
     this.loop = new JsonLineProcess(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodePowerShell(smtcScriptFor(this.app))],
+      powershellFileArgs(this.scriptFile),
       (o) => {
         const msg = o as Record<string, unknown>;
         if ('reply' in msg) {
@@ -404,6 +425,14 @@ export class WindowsBridge implements SpotifyBridge {
 
   stop() {
     this.loop?.stop();
+    if (this.scriptFile) {
+      try {
+        rmSync(path.dirname(this.scriptFile), { recursive: true, force: true });
+      } catch {
+        /* the temporary folder is cleaned up by Windows sooner or later */
+      }
+      this.scriptFile = null;
+    }
   }
 
   command(c: DesktopCommand): Promise<CommandReply | void> {

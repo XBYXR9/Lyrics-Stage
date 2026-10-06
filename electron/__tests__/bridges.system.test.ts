@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { splitJsonLines } from '../bridge/child';
 import { JXA_LOOP } from '../bridge/mac';
-import { encodePowerShell, SMTC_SCRIPT } from '../bridge/windows';
+import { powershellFileArgs, writeScriptFile } from '../bridge/windows';
 
 type Line = Record<string, unknown>;
 
@@ -40,11 +40,7 @@ function powerShellErrors(stderr: string): string {
 
 describe.runIf(process.platform === 'win32')('Windows media-controls script (real PowerShell)', () => {
   it('starts, reports its state as JSON and answers commands', async () => {
-    const ps = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodePowerShell(SMTC_SCRIPT)],
-      { windowsHide: true },
-    );
+    const ps = spawn('powershell.exe', powershellFileArgs(writeScriptFile('spotify')), { windowsHide: true });
     const lines: Line[] = [];
     let stderr = '';
     ps.stdout.setEncoding('utf8');
