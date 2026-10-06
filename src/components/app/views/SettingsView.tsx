@@ -8,6 +8,7 @@ import { SettingsPanel } from '../../SettingsPanel';
 import type { StyleChoice } from '../../../lib/types';
 import { Cover } from '../common';
 import { useApp } from '../context';
+import { UpdateButton } from '../UpdateButton';
 
 export function SettingsView() {
   const { engine, profile, onSignOut, reconnect, needsReconnect } = useApp();
@@ -73,6 +74,7 @@ export function SettingsView() {
           Lyrics Stage {appVersion()}. Not affiliated with, or endorsed by, Spotify. Your library comes from Spotify’s Web API; the lyrics come
           from LRCLIB.
         </p>
+        <UpdateButton />
       </section>
     </div>
   );

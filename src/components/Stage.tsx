@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useBeatFlash, useRealSound } from '../hooks/beatHooks';
 import { useEngineState, useKeepAwake, useLyrics, usePalette, usePresence, useRecordFrame } from '../hooks/hooks';
 import { loginStaysInApp, startLogin } from '../lib/auth';
-import { desktopApi, MUSIC_APP_LABEL, type MusicApp, type UpdateStatus } from '../lib/desktopTypes';
+import { desktopApi, MUSIC_APP_LABEL, type MusicApp } from '../lib/desktopTypes';
+import { useAppUpdate } from '../hooks/useAppUpdate';
 import type { Engine, SpotifyAppStatus } from '../lib/engine';
 import { prefetchLyrics } from '../lib/lyrics';
 import { motionHintText, takeMotionHint } from '../lib/motionHint';
@@ -37,13 +38,6 @@ const run = (p: Promise<unknown>) => p.catch((e) => toast(friendlyError(e), 'err
 function toggleFullscreen() {
   if (document.fullscreenElement) void document.exitFullscreen();
   else void document.documentElement.requestFullscreen?.().catch(() => {});
-}
-
-/** Desktop app: where its own update stands (null in the browser). */
-function useAppUpdate(): UpdateStatus | null {
-  const [status, setStatus] = useState<UpdateStatus | null>(null);
-  useEffect(() => desktopApi()?.onUpdate(setStatus), []);
-  return status;
 }
 
 /** How long the cover and player take to slide away (matches the CSS animation). */

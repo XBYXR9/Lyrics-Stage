@@ -2,6 +2,7 @@
 import { HeartIcon, HomeIcon, LibraryIcon, LyricsIcon, QueueIcon, SearchIcon, SettingsIcon } from '../Icons';
 import { Cover, useLoad } from './common';
 import { useApp } from './context';
+import { UpdateButton } from './UpdateButton';
 import type { View } from './nav';
 
 const ITEMS: { view: View; label: string; icon: typeof HomeIcon }[] = [
@@ -39,6 +40,7 @@ export function Sidebar() {
           <span>Settings</span>
         </button>
       </div>
+      <UpdateButton className="side-update" />
       <div className="side-lists" aria-label="Your playlists">
         <button className={`side-list${current === 'liked' ? ' on' : ''}`} onClick={() => router.go({ view: 'liked' })}>
           <span className="cover liked-cover small">
