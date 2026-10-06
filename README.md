@@ -17,6 +17,11 @@ songs together, the lyrics blend too.
 
 - **Apple Music–style lyrics.** Big bold lines. Words light up as they're sung, held notes glow, and lines glide into
   place one after another. Tap a line to jump to it, or scroll to look around.
+- **A Spotify-style app (version 1.0).** Sign in with Spotify and use Lyrics Stage on its own: Home, Search, Your Library
+  (playlists, albums, artists, Liked songs), pages for playlists, albums and artists, a queue, a player bar (play, skip,
+  seek, shuffle, repeat, volume, pick the device) and Settings. The **Lyrics** tab opens Lyrics Stage with an animation:
+  it grows out of the cover in the player bar until it fills the window. The music plays on your Spotify devices (the
+  Spotify app on your computer, your phone, a speaker) or, in the web version, in the browser tab ("Play here").
 - **Ten styles, plus Auto.** Apple Music, Karaoke (with a bouncing ball), Neon, Spotlight, Kinetic, Typewriter, Gradient flow,
   Retro VHS, Minimal and 3D depth. **Auto** picks one that fits each song's pace and mood. Each song can keep its own
   style and timing nudge.

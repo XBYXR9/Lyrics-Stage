@@ -393,3 +393,31 @@ fake clock. It includes:
 - scripted Automix blends between songs.
 
 That makes it handy for trying styles and for developing without Spotify. Open `http://127.0.0.1:5173/?demo`.
+
+
+## The Spotify-style app (`src/components/app/`)
+
+Since version 1.0, signing in with Spotify opens a full app instead of just the lyrics screen:
+
+| Part | Where |
+| --- | --- |
+| The shell: menu, pages, player bar, shortcuts (Space plays, L opens the lyrics) | `AppShell.tsx`, `Sidebar.tsx`, `PlayerBar.tsx` |
+| Pages: Home, Search, Library, Liked songs, playlist / album / artist, Queue, Settings | `views/` |
+| What the pages show, and where it comes from | `src/lib/catalog.ts` (Spotify's Web API, or a small made-up library for the demo) |
+| The Lyrics tab: Lyrics Stage in a window that opens from the cover | `LyricsOverlay.tsx` (it hosts the same `Stage` as before) |
+
+The player is still the engine (`SpotifyEngine`): it follows `/me/player` and plays on whatever device is active. The new
+controls are `playContext` (a playlist or album, starting at a song), `playUris`, `setShuffle`, `setRepeat` and
+`queueList`.
+
+**Spotify's rules for apps in development mode shape the pages** (checked against Spotify's February 2026 changes):
+
+- A search gives at most 10 results per kind, so Search has a "Show more" button (`offset`).
+- The songs of a playlist (`/playlists/{id}/items`) can only be read for playlists you made or share. For any other
+  playlist the page says so and the Play button still works (it plays the playlist by its uri).
+- An artist's "popular songs" endpoint is gone: the artist page uses the best matches of a search for the name.
+- Liked songs and follows go through `/me/library` (a `uris` list), not the old `/me/tracks` writes.
+- Up to 5 accounts can use an app in development mode (see README).
+
+Logins made before 1.0 have fewer permissions than the library needs. The token now remembers the granted scopes
+(`grantedScopes()` in `src/lib/auth.ts`), and the app shows a "Sign in again" banner when they are missing.

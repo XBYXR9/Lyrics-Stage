@@ -232,6 +232,13 @@ let the app download only the parts that changed. The app checks 10 seconds afte
 certificates are provided as secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, plus Apple notarization credentials for macOS).
 See the [electron-builder code signing docs](https://www.electron.build/code-signing).
 
+## Signing in (version 1.0)
+
+The desktop app now starts with **Sign in with Spotify** and opens the Spotify-style app (home, library, search, player,
+lyrics). The music plays in the Spotify app on this computer or on any other Spotify device. You can still choose
+**Skip — follow the Spotify app on this computer**, which is the plain lyrics screen of the earlier versions (no login
+and no developer app needed). Apple Music and YouTube Music are always followed this way.
+
 ## Why not log in to Spotify inside the app?
 
 We tried the obvious alternatives:

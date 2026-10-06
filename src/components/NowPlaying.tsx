@@ -95,7 +95,7 @@ export function NowPlaying({ engine, state }: { engine: Engine; state: EngineSta
 /** How much one press of − or + changes Spotify's volume (percentage points). */
 export const VOLUME_STEP = 10;
 
-function Volume({ engine, volume }: { engine: Engine; volume: number | null }) {
+export function Volume({ engine, volume }: { engine: Engine; volume: number | null }) {
   const change = (delta: number) => run(engine.changeVolume(delta));
   return (
     <div className="np-volume">
@@ -128,7 +128,7 @@ function Volume({ engine, volume }: { engine: Engine; volume: number | null }) {
   );
 }
 
-function Progress({ engine, durationMs }: { engine: Engine; durationMs: number }) {
+export function Progress({ engine, durationMs }: { engine: Engine; durationMs: number }) {
   const fill = useRef<HTMLDivElement>(null);
   const elapsed = useRef<HTMLSpanElement>(null);
   const left = useRef<HTMLSpanElement>(null);
@@ -202,7 +202,7 @@ function DevicePicker({ engine, state }: { engine: Engine; state: EngineState })
   return <DeviceMenu engine={engine} state={state} />;
 }
 
-function DeviceMenu({ engine, state }: { engine: Engine; state: EngineState }) {
+export function DeviceMenu({ engine, state }: { engine: Engine; state: EngineState }) {
   const [open, setOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceInfo[] | null>(null);
 

@@ -17,6 +17,14 @@ export const SCOPES = [
   'user-read-playback-state', // see what's playing + devices + queue
   'user-modify-playback-state', // play / pause / skip / seek
   'user-read-currently-playing',
+  // The Spotify-style app (home, library, search, likes):
+  'user-read-recently-played', // "recently played" on Home
+  'user-top-read', // your top artists and songs on Home
+  'user-library-read', // liked songs, saved albums, and whether a song is liked
+  'user-library-modify', // like and unlike songs
+  'user-follow-read', // artists you follow
+  'playlist-read-private', // your playlists
+  'playlist-read-collaborative', // playlists you share with others
 ].join(' ');
 
 const KEY_CLIENT_ID = 'ls.clientId';
@@ -28,6 +36,8 @@ interface StoredToken {
   accessToken: string;
   refreshToken: string;
   expiresAt: number; // epoch ms
+  /** The permissions Spotify granted, space separated (older logins have none saved). */
+  scope?: string;
 }
 
 function read(key: string): string | null {
@@ -137,13 +147,14 @@ const DESKTOP_ERRORS: Record<string, string> = {
   browser_failed: 'Couldn’t open your web browser for the Spotify login.',
 };
 
-function saveToken(json: { access_token: string; refresh_token?: string; expires_in: number }) {
+function saveToken(json: { access_token: string; refresh_token?: string; expires_in: number; scope?: string }) {
   const previous = loadToken();
   const token: StoredToken = {
     accessToken: json.access_token,
     // Spotify may or may not rotate the refresh token.
     refreshToken: json.refresh_token ?? previous?.refreshToken ?? '',
     expiresAt: Date.now() + json.expires_in * 1000,
+    scope: json.scope ?? previous?.scope,
   };
   write(KEY_TOKEN, JSON.stringify(token));
   return token;
@@ -253,6 +264,18 @@ export async function getAccessToken(forceRefresh = false): Promise<string | nul
   if (!forceRefresh && token.expiresAt - Date.now() > 60_000) return token.accessToken;
   const fresh = await refresh(token);
   return fresh?.accessToken ?? null;
+}
+
+/** The permissions the current login has, or null when this login is older than the app remembers them. */
+export function grantedScopes(): string[] | null {
+  const scope = loadToken()?.scope;
+  return scope ? scope.split(/\s+/).filter(Boolean) : null;
+}
+
+/** Can the app read the user's library, playlists and history? Logins made before version 1.0 can't: they must sign in again. */
+export function hasLibraryAccess(): boolean {
+  const granted = grantedScopes();
+  return !!granted && ['user-library-read', 'playlist-read-private', 'user-follow-read'].every((s) => granted.includes(s));
 }
 
 export function logout() {

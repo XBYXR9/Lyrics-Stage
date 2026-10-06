@@ -9,7 +9,7 @@
 
 import { findCover, type CoverQuery } from './cover';
 import { MUSIC_APP_LABEL, type DesktopCommand, type DesktopSnapshot, type LyricsStageDesktopApi, type MusicApp } from './desktopTypes';
-import { BaseEngine, clampVolume, type DeviceInfo, type Engine, type SpotifyAppStatus } from './engine';
+import { BaseEngine, clampVolume, type DeviceInfo, type Engine, type RepeatMode, type SpotifyAppStatus } from './engine';
 import type { TrackInfo } from './types';
 
 /** How long to wait before trying a cover lookup again for the same song. */
@@ -236,6 +236,27 @@ export class DesktopEngine extends BaseEngine implements Engine {
 
   async playTrack(uri: string) {
     await this.send({ type: 'openUri', uri });
+  }
+
+  /** Playlists and albums open in the music app (Spotify only: other apps can't be asked to play one). */
+  async playContext(contextUri: string) {
+    await this.send({ type: 'openUri', uri: contextUri });
+  }
+
+  async playUris(uris: string[]) {
+    if (uris[0]) await this.send({ type: 'openUri', uri: uris[0] });
+  }
+
+  async setShuffle(_on: boolean) {
+    throw new Error(`Turn shuffle on in ${MUSIC_APP_LABEL[this.app]} itself.`);
+  }
+
+  async setRepeat(_mode: RepeatMode) {
+    throw new Error(`Change repeat in ${MUSIC_APP_LABEL[this.app]} itself.`);
+  }
+
+  async queueList(): Promise<TrackInfo[]> {
+    return [];
   }
 
   async addToQueue() {
