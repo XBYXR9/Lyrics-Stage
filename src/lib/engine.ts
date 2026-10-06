@@ -10,6 +10,8 @@
 
 import { getAccessToken } from './auth';
 import { PlaybackClock, type Clock } from './clock';
+import { canPlayProtectedAudio } from './drm';
+import { isNativeApp } from './nativeApp';
 import { desktopApi, type LyricsStageDesktopApi } from './desktopTypes';
 import { localIsPlaying, type LocalSnapshot } from './localPlayer';
 import { isRefusal, loadProbeMemory, PROBE_REFRESH_MIN_MS, ProbeMemory, saveProbeMemory, type SilentProbe } from './silentProbes';
@@ -584,6 +586,8 @@ function isApiTrack(item: unknown): item is ApiTrack {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const NO_DRM_MESSAGE = 'This copy of the app can’t play Spotify’s protected music itself. Pick a device with the button at the bottom (the Spotify app on this computer, your phone or a speaker).';
+
 export class SpotifyEngine extends BaseEngine implements Engine {
   readonly kind = 'web-api';
   readonly isDemo = false;
@@ -591,9 +595,9 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   readonly canPlayHere: boolean;
 
   /**
-   * `browserPlayer: false` in the desktop app: Spotify's in-page player needs
-   * copy protection (DRM) that Electron doesn't include, so music plays in a
-   * Spotify app (this computer, phone, speaker) and the window follows it.
+   * The music plays in this app's own player (Spotify's Web Playback SDK), which shows up as a device. That needs copy
+   * protection (DRM): the desktop app ships a build of Electron that has it, and says so if it is missing (see drm.ts).
+   * `browserPlayer: false` turns the own player off (music then plays in a Spotify app and the window follows it).
    */
   constructor({ browserPlayer = true, local = desktopApi() }: { browserPlayer?: boolean; local?: LyricsStageDesktopApi | null } = {}) {
     super();
@@ -859,7 +863,12 @@ export class SpotifyEngine extends BaseEngine implements Engine {
   private enabling: Promise<void> | null = null;
 
   async enableBrowserPlayer() {
-    if (!this.canPlayHere) throw new Error('Play music in a Spotify app (this computer, your phone or a speaker) and the lyrics follow along.');
+    if (!this.canPlayHere) throw new Error('Play music in a Spotify app (this computer, your phone or a speaker) and pick it with the device button.');
+    // The desktop app and the phone app need copy protection (DRM) support to play Spotify's music themselves.
+    if ((this.local || isNativeApp()) && !(await canPlayProtectedAudio())) {
+      this.update({ browserPlayer: { status: 'error', deviceId: null, message: NO_DRM_MESSAGE } });
+      throw new Error(NO_DRM_MESSAGE);
+    }
     if (this.player) {
       await this.player.activateElement().catch(() => {});
       return;
@@ -1023,6 +1032,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
     } catch (err) {
       const noDevice = err instanceof SpotifyError && (err.status === 404 || err.reason === 'NO_ACTIVE_DEVICE');
       if (!noDevice) throw err;
+      // No device is playing right now: this app plays the music itself (its own player, shown as a device).
       await this.enableBrowserPlayer();
       const id = await this.waitForBrowserPlayer();
       if (!id) throw err;

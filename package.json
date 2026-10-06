@@ -1,7 +1,7 @@
 {
   "name": "spotify-lyrics-stage",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Apple Music-style animated lyrics for Spotify — a desktop app that follows the Spotify app (Automix included), plus a web version.",
   "scripts": {
@@ -57,6 +57,11 @@
       }
     ],
     "electronUpdaterCompatibility": ">=2.16",
+    "electronVersion": "44.5.1+wvcus",
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/",
+      "customDir": "v44.5.1+wvcus"
+    },
     "directories": {
       "output": "release",
       "buildResources": "build"

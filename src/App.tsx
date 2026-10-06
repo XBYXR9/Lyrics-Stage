@@ -115,8 +115,9 @@ export default function App() {
   // Only the follow-the-app mode cares which music app it is; changing it must not restart a signed-in session.
   const followedApp = mode === 'desktop' ? musicApp : 'spotify';
   const engine: Engine | null = useMemo(() => {
-    // Spotify's web player can't run in the desktop app or Android's web view: the music plays in a Spotify app.
-    if (mode === 'spotify') return new SpotifyEngine({ browserPlayer: !desktopApi() && !isNativeApp() });
+    // The music plays in the app's own player (Spotify's Web Playback SDK). The desktop app and the phone app check that
+    // copy protection (DRM) is available before they try (see src/lib/drm.ts).
+    if (mode === 'spotify') return new SpotifyEngine({ browserPlayer: true });
     if (mode === 'demo') return new DemoEngine();
     const api = desktopApi();
     if (mode === 'desktop' && api) return new DesktopEngine(api, undefined, followedApp);

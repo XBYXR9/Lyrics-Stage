@@ -20,7 +20,7 @@ export class SpotifyError extends Error {
 export function friendlyError(err: unknown): string {
   if (err instanceof SpotifyError) {
     if (err.reason === 'NO_ACTIVE_DEVICE' || err.status === 404)
-      return 'No active Spotify device. Open Spotify on any device (or press "Play here").';
+      return 'No Spotify device is playing. Press play again, or pick a device with the button at the bottom.';
     if (err.reason === 'VOLUME_CONTROL_DISALLOW') return 'This Spotify device doesn’t let apps change its volume.';
     // Development-mode Spotify apps only allow the accounts listed under User Management.
     if (err.status === 403 && /not be registered|not registered/i.test(err.message))

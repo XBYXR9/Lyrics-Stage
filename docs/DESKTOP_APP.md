@@ -243,8 +243,10 @@ and no developer app needed). Apple Music and YouTube Music are always followed 
 
 We tried the obvious alternatives:
 
-- **Spotify's web player inside the app:** Spotify's audio is protected with DRM (Widevine). Unsigned apps get license
-  errors, so it doesn't play reliably.
+- **Spotify's web player inside the app:** Spotify's audio is protected with DRM (Widevine). Normal Electron can't play
+  it. Since 1.0.1 the app is built on castLabs' Electron, which includes Widevine, so the app's own player makes the
+  sound (and the Spotify app is not opened). The castLabs builds are signed for development; if Spotify ever refuses
+  them, the app shows a message and you can follow the Spotify app instead (Settings).
 - **The Spotify Web API:** that's the web version's approach. It needs you to create a developer app, and Spotify now
   limits those apps to 5 users.
 
