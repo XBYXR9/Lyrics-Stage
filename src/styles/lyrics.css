@@ -847,7 +847,7 @@
 }
 .rt-hud {
   position: absolute;
-  inset: 5% 6% auto;
+  inset: 12% 6% auto;
   display: flex;
   justify-content: space-between;
   font-size: calc(clamp(18px, 1.6vw + 8px, 34px) * var(--font-scale, 1));
@@ -898,13 +898,21 @@
     -0.05em 0 rgba(40, 220, 255, 0.75),
     0 0 0.4em color-mix(in srgb, var(--accent) 60%, transparent);
 }
-.rt-scan {
+/* The tape look over the whole picture (player side and lyrics side alike), under the top bar and the panels. */
+.retro-fx {
   position: absolute;
   inset: 0;
+  z-index: 6;
   pointer-events: none;
   background:
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 2px, transparent 2px 4px),
-    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.16) 0 2px, transparent 2px 4px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.5) 100%);
+  animation: retro-fx-in 0.6s ease-out;
+}
+@keyframes retro-fx-in {
+  from {
+    opacity: 0;
+  }
 }
 .rt-dots {
   justify-content: center;
