@@ -119,3 +119,47 @@ export const CardIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M8 16.5h8" />
   </svg>
 );
+
+export const HomeIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M4 11.2 12 4l8 7.2V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1v-7.8Z" />
+  </svg>
+);
+export const LibraryIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M5 4v16M10 4v16" />
+    <path d="m14.5 5.6 4.2-1.1 3 14.6-4.2 1.1-3-14.6Z" />
+  </svg>
+);
+export const HeartIcon = ({ filled, ...p }: SVGProps<SVGSVGElement> & { filled?: boolean }) => (
+  <svg {...base(p)} fill={filled ? 'currentColor' : 'none'}>
+    <path d="M12 20.2S4 15.1 4 9.6A4.4 4.4 0 0 1 12 7.2a4.4 4.4 0 0 1 8 2.4c0 5.5-8 10.6-8 10.6Z" />
+  </svg>
+);
+export const ShuffleIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M3 7h3.5c4 0 5 10 9 10H21M3 17h3.5c1.4 0 2.4-1.2 3.3-2.7M21 7h-5.5c-1.7 0-2.9 1.4-3.9 3M18.5 4.5 21 7l-2.5 2.5M18.5 14.5 21 17l-2.5 2.5" />
+  </svg>
+);
+export const RepeatIcon = ({ one, ...p }: SVGProps<SVGSVGElement> & { one?: boolean }) => (
+  <svg {...base(p)}>
+    <path d="M17 3.5 20 6.5l-3 3M4 11.5v-1a4 4 0 0 1 4-4h12M7 20.5l-3-3 3-3M20 12.5v1a4 4 0 0 1-4 4H4" />
+    {one && <path d="M11.2 10.5 12.6 9.6v5.2" strokeWidth={1.8} />}
+  </svg>
+);
+export const BackIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="m14.5 5-7 7 7 7" />
+  </svg>
+);
+export const ChevronRightIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="m9.5 5 7 7-7 7" />
+  </svg>
+);
+export const UserIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="8.5" r="3.6" />
+    <path d="M4.5 20c.6-4 3.5-6 7.5-6s6.9 2 7.5 6" />
+  </svg>
+);

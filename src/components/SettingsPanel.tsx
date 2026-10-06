@@ -50,7 +50,10 @@ export function SettingsPanel({
   onNudge,
   onResetNudge,
   onRecord,
+  embedded = false,
 }: {
+  /** Shown as a page of the Spotify-style app instead of a side panel. */
+  embedded?: boolean;
   settings: Settings;
   /** The lyric style in use for the song playing now (a saved choice for this song, or the general one). */
   styleChoice: StyleChoice;
@@ -85,15 +88,17 @@ export function SettingsPanel({
   ];
 
   return (
-    <aside className="panel glass settings" aria-label="Settings">
-      <div className="panel-head">
-        <h2>Settings</h2>
-        <button className="icon-btn" onClick={onClose} aria-label="Close settings">
-          <CloseIcon />
-        </button>
-      </div>
+    <aside className={embedded ? 'settings settings-page' : 'panel glass settings'} aria-label="Settings">
+      {!embedded && (
+        <div className="panel-head">
+          <h2>Settings</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Close settings">
+            <CloseIcon />
+          </button>
+        </div>
+      )}
 
-      <div className="panel-body">
+      <div className={embedded ? 'settings-body' : 'panel-body'}>
         <Section title="Lyrics style">
           <div className="style-grid">
             {choices.map((c) => (

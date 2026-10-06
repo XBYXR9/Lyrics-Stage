@@ -2,7 +2,7 @@
 // fake clock. It lets you try every lyric style — and see an Automix-style
 // blend — without connecting Spotify. It's also handy for development.
 
-import { BaseEngine, clampVolume, type DeviceInfo, type Engine } from './engine';
+import { BaseEngine, clampVolume, type DeviceInfo, type Engine, type RepeatMode } from './engine';
 import { buildSynced } from './lrc';
 import { classifyTransition } from './transitions';
 import type { Lyrics, TrackInfo, TransitionInfo } from './types';
@@ -114,6 +114,13 @@ function cover(draw: (ctx: CanvasRenderingContext2D, s: number) => void): string
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
+let songsCache: DemoSong[] | null = null;
+
+/** The demo songs (made once: their covers are painted on a canvas). */
+export function demoSongs(): DemoSong[] {
+  return (songsCache ??= makeSongs());
+}
+
 function makeSongs(): DemoSong[] {
   const neon = cover((ctx, s) => {
     const g = ctx.createLinearGradient(0, 0, s, s);
@@ -197,6 +204,8 @@ function makeSongs(): DemoSong[] {
     artUrl: art,
     artThumbUrl: art,
     durationMs,
+    albumId: key,
+    artistIds: [key],
     localLyrics: lyrics,
   });
 
@@ -227,12 +236,14 @@ export class DemoEngine extends BaseEngine implements Engine {
   private songs: DemoSong[] = [];
   private index = 0;
   private queued: number | null = null;
+  /** The order the songs play in (a playlist or album, or shuffled). */
+  private order: number[] = [];
   private timer: ReturnType<typeof setInterval> | undefined;
   private lastTick = 0;
 
   start() {
     if (this.timer) return;
-    if (!this.songs.length) this.songs = makeSongs();
+    if (!this.songs.length) this.songs = demoSongs();
     if (!this.state.track) this.switchTo(0, 0, { kind: 'initial', overlapMs: 0, startOffsetMs: 0 }, true);
     this.update({
       device: { id: 'demo', name: 'Demo (no sound)', type: 'Computer', isActive: true, isThisBrowser: true },
@@ -247,8 +258,16 @@ export class DemoEngine extends BaseEngine implements Engine {
     this.timer = undefined;
   }
 
+  private orderNow(): number[] {
+    return this.order.length ? this.order : this.songs.map((_, i) => i);
+  }
+
   private nextIndex() {
-    return this.queued ?? (this.index + 1) % this.songs.length;
+    if (this.queued !== null) return this.queued;
+    if (this.state.repeat === 'track') return this.index;
+    const order = this.orderNow();
+    const at = order.indexOf(this.index);
+    return order[(at + 1) % order.length] ?? 0;
   }
 
   private tick() {
@@ -311,7 +330,9 @@ export class DemoEngine extends BaseEngine implements Engine {
       this.clock.set(0, this.clock.playing);
       return;
     }
-    const i = (this.index - 1 + this.songs.length) % this.songs.length;
+    const order = this.orderNow();
+    const at = order.indexOf(this.index);
+    const i = order[(at - 1 + order.length) % order.length] ?? 0;
     this.switchTo(i, 0, { kind: 'skip', overlapMs: 0, startOffsetMs: 0 }, this.clock.playing);
   }
 
@@ -330,6 +351,51 @@ export class DemoEngine extends BaseEngine implements Engine {
       this.queued = i;
       this.update({ nextTrack: this.songs[i].track });
     }
+  }
+
+  /** Plays a demo playlist or album: `demo:playlist:<id>` or `demo:album:<key>`. */
+  async playContext(contextUri: string, firstUri?: string) {
+    const keys = DEMO_CONTEXTS[contextUri];
+    if (!keys) return;
+    const uris = keys.map((k) => `demo:${k}`);
+    await this.playUris(uris, Math.max(0, firstUri ? uris.indexOf(firstUri) : 0));
+  }
+
+  async playUris(uris: string[], startIndex = 0) {
+    const order = uris.map((u) => this.songs.findIndex((s) => s.track.uri === u)).filter((i) => i >= 0);
+    if (!order.length) return;
+    this.order = order;
+    this.applyShuffle();
+    const first = order[Math.min(startIndex, order.length - 1)];
+    if (this.state.shuffle) this.order = [first, ...this.order.filter((i) => i !== first)];
+    this.switchTo(first, 0, { kind: 'skip', overlapMs: 0, startOffsetMs: 0 }, true);
+  }
+
+  private applyShuffle() {
+    if (!this.state.shuffle) return;
+    const rest = [...this.orderNow()];
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    this.order = rest;
+  }
+
+  async setShuffle(on: boolean) {
+    this.update({ shuffle: on });
+    this.applyShuffle();
+    this.update({ nextTrack: this.songs[this.nextIndex()].track });
+  }
+
+  async setRepeat(mode: RepeatMode) {
+    this.update({ repeat: mode });
+  }
+
+  async queueList(): Promise<TrackInfo[]> {
+    const order = this.orderNow();
+    const at = order.indexOf(this.index);
+    const after = order.slice(at + 1).map((i) => this.songs[i].track);
+    return this.queued !== null ? [this.songs[this.queued].track, ...after] : after;
   }
 
   async search(query: string): Promise<TrackInfo[]> {
@@ -352,3 +418,19 @@ export class DemoEngine extends BaseEngine implements Engine {
 
   async enableBrowserPlayer() {}
 }
+
+/** The made-up playlists and albums of the demo mode: what each contains, by song key (see src/lib/catalog.ts). */
+export const DEMO_PLAYLISTS = [
+  { id: 'mix', name: 'Demo mix', owner: 'Lyrics Stage', keys: ['neon', 'moon', 'street', 'loop'] },
+  { id: 'night', name: 'Late night loops', owner: 'Lyrics Stage', keys: ['moon', 'loop'] },
+  { id: 'static', name: 'Neon and static', owner: 'Lyrics Stage', keys: ['neon', 'street'] },
+];
+
+/** Every playlist and album a demo song list can be played from, by its uri. */
+export const DEMO_CONTEXTS: Record<string, string[]> = {
+  ...Object.fromEntries(DEMO_PLAYLISTS.map((p) => [`demo:playlist:${p.id}`, p.keys])),
+  'demo:album:neon': ['neon'],
+  'demo:album:moon': ['moon'],
+  'demo:album:street': ['street'],
+  'demo:album:loop': ['loop'],
+};

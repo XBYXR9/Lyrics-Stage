@@ -68,7 +68,13 @@ export interface EngineState {
   spotifyApp: SpotifyAppStatus | null;
   /** Spotify's volume (0–100), or null while we don't know it. */
   volume: number | null;
+  /** Shuffle is on. */
+  shuffle: boolean;
+  /** Repeat: off, the playlist or album again, or the song again. */
+  repeat: RepeatMode;
 }
+
+export type RepeatMode = 'off' | 'context' | 'track';
 
 export type EngineKind = 'web-api' | 'desktop' | 'demo';
 
@@ -90,6 +96,14 @@ export interface Engine {
   previous(): Promise<void>;
   seek(positionMs: number): Promise<void>;
   playTrack(uri: string): Promise<void>;
+  /** Plays a playlist or album (`firstUri`: start with this song of it). */
+  playContext(contextUri: string, firstUri?: string): Promise<void>;
+  /** Plays these songs in order, starting with the one at `startIndex`. */
+  playUris(uris: string[], startIndex?: number): Promise<void>;
+  setShuffle(on: boolean): Promise<void>;
+  setRepeat(mode: RepeatMode): Promise<void>;
+  /** The songs coming up next, in order. */
+  queueList(): Promise<TrackInfo[]>;
   addToQueue(uri: string): Promise<void>;
   search(query: string): Promise<TrackInfo[]>;
   listDevices(): Promise<DeviceInfo[]>;
@@ -130,6 +144,8 @@ export function initialEngineState(): EngineState {
     authExpired: false,
     spotifyApp: null,
     volume: null,
+    shuffle: false,
+    repeat: 'off',
   };
 }
 
@@ -772,6 +788,10 @@ export class SpotifyEngine extends BaseEngine implements Engine {
     }
     const device = this.mapDevice(res.device);
     if (res.repeat_state === 'off' || res.repeat_state === 'context' || res.repeat_state === 'track') this.repeatState = res.repeat_state;
+    // Shuffle and repeat, as the Spotify-style app shows them (only when they changed).
+    const shuffle = res.shuffle_state === true;
+    const repeat = this.repeatState ?? 'off';
+    if (shuffle !== this.state.shuffle || repeat !== this.state.repeat) this.update({ shuffle, repeat });
     if (this.sdkActive && device.isThisBrowser) {
       // The SDK is the better source for this device; only refresh device info.
       this.update({ device });
@@ -997,7 +1017,7 @@ export class SpotifyEngine extends BaseEngine implements Engine {
    * Plays on the current device. If there isn't one, starts the browser player
    * and plays there instead.
    */
-  private async playOrWakeBrowser(body: { uris: string[] } | undefined) {
+  private async playOrWakeBrowser(body: Parameters<typeof spotify.play>[0]) {
     try {
       await spotify.play(body);
     } catch (err) {
@@ -1014,6 +1034,59 @@ export class SpotifyEngine extends BaseEngine implements Engine {
         await spotify.play(body, id);
       }
     }
+  }
+
+  async playContext(contextUri: string, firstUri?: string) {
+    this.noteUserAction();
+    try {
+      await this.playOrWakeBrowser({ context_uri: contextUri, ...(firstUri ? { offset: { uri: firstUri } } : {}) });
+    } finally {
+      this.pokeSoon(500);
+    }
+  }
+
+  async playUris(uris: string[], startIndex = 0) {
+    if (!uris.length) return;
+    this.noteUserAction();
+    const start = Math.max(0, Math.min(startIndex, uris.length - 1));
+    try {
+      // Spotify takes up to 100 songs at once: the one picked, and what follows it.
+      await this.playOrWakeBrowser({ uris: uris.slice(start, start + 100) });
+    } finally {
+      this.pokeSoon(500);
+    }
+  }
+
+  async setShuffle(on: boolean) {
+    this.update({ shuffle: on });
+    try {
+      await spotify.shuffle(on);
+    } catch (err) {
+      this.update({ shuffle: !on });
+      throw err;
+    } finally {
+      this.pokeSoon(500);
+    }
+  }
+
+  async setRepeat(mode: RepeatMode) {
+    const before = this.state.repeat;
+    this.repeatState = mode;
+    this.update({ repeat: mode });
+    try {
+      await spotify.repeat(mode);
+    } catch (err) {
+      this.repeatState = before;
+      this.update({ repeat: before });
+      throw err;
+    } finally {
+      this.pokeSoon(500);
+    }
+  }
+
+  async queueList(): Promise<TrackInfo[]> {
+    const q = await spotify.getQueue();
+    return (q?.queue ?? []).filter(isApiTrack).map(toTrackInfo);
   }
 
   async addToQueue(uri: string) {

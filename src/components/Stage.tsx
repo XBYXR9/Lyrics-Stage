@@ -22,7 +22,7 @@ import type { Palette, StyleChoice, TrackInfo } from '../lib/types';
 import { analyzeVibe } from '../lib/vibe';
 import { Background } from './Background';
 import { CardPanel } from './CardPanel';
-import { CardIcon, CloseIcon, ExpandIcon, LyricsIcon, PortraitIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
+import { BackIcon, CardIcon, CloseIcon, ExpandIcon, LyricsIcon, PortraitIcon, SearchIcon, SettingsIcon, SparkleIcon } from './Icons';
 import { LyricsStage } from './LyricsStage';
 import { NowPlaying, VOLUME_STEP } from './NowPlaying';
 import { SearchPanel } from './SearchPanel';
@@ -106,7 +106,12 @@ export function Stage({
   onSignOut,
   onDemo,
   onSignIn,
+  onBack,
+  inShell = false,
 }: {
+  /** Inside the Spotify-style app (the Lyrics tab): a Back button leaves the lyrics, and the app shows the toasts and the sleep timer. */
+  onBack?: () => void;
+  inShell?: boolean;
   engine: Engine;
   onSignOut: () => void;
   onDemo?: () => void;
@@ -119,6 +124,8 @@ export function Stage({
   const [panel, setPanel] = useState<'search' | 'settings' | 'card' | null>(null);
   const panelRef = useRef(panel);
   panelRef.current = panel;
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
   const native = isNativeApp();
   // The recording view: a full-screen 9:16 frame with no buttons, to record for TikTok.
   const [recording, setRecording] = useState(false);
@@ -202,7 +209,14 @@ export function Stage({
         setRecording(false);
         return true;
       }
-      if (!panelRef.current) return false;
+      if (!panelRef.current) {
+        // In the Spotify-style app, Back leaves the lyrics instead of the whole app.
+        if (onBackRef.current) {
+          onBackRef.current();
+          return true;
+        }
+        return false;
+      }
       setPanel(null);
       return true;
     });
@@ -566,6 +580,11 @@ export function Stage({
 
       {!recording && (
         <header className="topbar">
+          {onBack && (
+            <button className="icon-btn lyrics-back" onClick={onBack} aria-label="Back to the app" title="Back to the app">
+              <BackIcon />
+            </button>
+          )}
           {askSound && (
             <span
               className="pill ask-pill"
@@ -691,8 +710,8 @@ export function Stage({
           blendExpected={change.transition.kind === 'blend'}
         />
       )}
-      <SleepOverlay engine={engine} />
-      <Toasts />
+      {!inShell && <SleepOverlay engine={engine} />}
+      {!inShell && <Toasts />}
     </div>
   );
 }
@@ -701,7 +720,7 @@ export function Stage({
 export const UP_NEXT_MS = 5000;
 
 /** A small card in the bottom corner for the last 5 seconds of a song: the next song and its cover. Not for Automix. */
-function UpNext({
+export function UpNext({
   engine,
   track,
   next,
@@ -745,7 +764,7 @@ function UpNext({
  * The sleep timer: the screen dims over the last minute, then the music pauses and the screen goes dark until it is
  * touched. The timer itself lives in src/lib/sleepTimer.ts (it is started in Settings).
  */
-function SleepOverlay({ engine }: { engine: Engine }) {
+export function SleepOverlay({ engine }: { engine: Engine }) {
   const sleep = useSleepState();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

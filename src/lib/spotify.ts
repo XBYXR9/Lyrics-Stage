@@ -97,8 +97,55 @@ export interface ApiTrack {
   name: string;
   duration_ms: number;
   is_local?: boolean;
-  artists: { name: string }[];
-  album: { name: string; images: ApiImage[] };
+  explicit?: boolean;
+  artists: { id?: string | null; name: string }[];
+  album: { id?: string; name: string; images: ApiImage[] };
+}
+
+export interface ApiPaging<T> {
+  items: (T | null)[];
+  total: number;
+  offset: number;
+  limit: number;
+  next: string | null;
+}
+
+export interface ApiAlbum {
+  id: string;
+  uri: string;
+  name: string;
+  album_type?: string;
+  release_date?: string;
+  total_tracks?: number;
+  images: ApiImage[];
+  artists: { id?: string | null; name: string }[];
+}
+
+export interface ApiArtist {
+  id: string;
+  uri: string;
+  name: string;
+  genres?: string[];
+  images?: ApiImage[];
+}
+
+export interface ApiPlaylist {
+  id: string;
+  uri: string;
+  name: string;
+  description?: string | null;
+  images?: ApiImage[] | null;
+  owner?: { id?: string; display_name?: string | null };
+  /** Spotify renamed `tracks` to `items` in 2026; either can come back. */
+  tracks?: { total?: number };
+  items?: { total?: number };
+}
+
+export interface ApiProfile {
+  id: string;
+  display_name?: string | null;
+  images?: ApiImage[];
+  product?: string;
 }
 
 export interface ApiDevice {
@@ -139,6 +186,8 @@ export function toTrackInfo(t: ApiTrack): TrackInfo {
     artUrl: art.large,
     artThumbUrl: art.small,
     durationMs: t.duration_ms,
+    albumId: t.album?.id,
+    artistIds: t.artists.map((a) => a.id).filter((id): id is string => !!id),
   };
 }
 
@@ -156,7 +205,11 @@ export const spotify = {
   search: (q: string) =>
     request<{ tracks: { items: ApiTrack[] } }>('/search', { query: { q, type: 'track', limit: 10 } }),
 
-  play: (body: { uris?: string[]; context_uri?: string; position_ms?: number } | undefined, deviceId?: string) =>
+  /** Start playing songs, or a playlist / album (`offset`: which song of it to start with). */
+  play: (
+    body: { uris?: string[]; context_uri?: string; position_ms?: number; offset?: { uri: string } | { position: number } } | undefined,
+    deviceId?: string,
+  ) =>
     request('/me/player/play', { method: 'PUT', query: { device_id: deviceId }, body: body ?? {} }),
 
   pause: (deviceId?: string) => request('/me/player/pause', { method: 'PUT', query: { device_id: deviceId } }),
@@ -175,6 +228,63 @@ export const spotify = {
 
   /** Needs Premium. state: "off", "context" (the playlist or album) or "track". */
   repeat: (state: 'off' | 'context' | 'track') => request('/me/player/repeat', { method: 'PUT', query: { state } }),
+
+  shuffle: (on: boolean) => request('/me/player/shuffle', { method: 'PUT', query: { state: on ? 'true' : 'false' } }),
+
+  // ---- Library and browsing (the Spotify-style app). Limits follow Spotify's rules for apps in development mode:
+  // searches return at most 10 results, playlist songs come from /items, and the library is /me/library.
+
+  me: () => request<ApiProfile>('/me'),
+
+  myPlaylists: (offset = 0) => request<ApiPaging<ApiPlaylist>>('/me/playlists', { query: { limit: 50, offset } }),
+
+  playlist: (id: string) =>
+    request<ApiPlaylist>(`/playlists/${id}`, { query: { fields: 'id,uri,name,description,images,owner(id,display_name),tracks(total),items(total)' } }),
+
+  /** Only works for playlists you own or share (Spotify's rule): anything else answers 403. */
+  playlistItems: (id: string, offset = 0) =>
+    request<ApiPaging<{ item?: ApiTrack | null; track?: ApiTrack | null }>>(`/playlists/${id}/items`, {
+      query: { limit: 50, offset, additional_types: 'track' },
+    }),
+
+  likedTracks: (offset = 0) => request<ApiPaging<{ track: ApiTrack }>>('/me/tracks', { query: { limit: 50, offset } }),
+
+  savedAlbums: (offset = 0) => request<ApiPaging<{ album: ApiAlbum }>>('/me/albums', { query: { limit: 50, offset } }),
+
+  followedArtists: (after?: string) =>
+    request<{ artists: { items: ApiArtist[]; total?: number; cursors?: { after?: string | null } } }>('/me/following', {
+      query: { type: 'artist', limit: 50, after },
+    }),
+
+  recentlyPlayed: () => request<{ items: { track: ApiTrack }[] }>('/me/player/recently-played', { query: { limit: 50 } }),
+
+  topArtists: () => request<ApiPaging<ApiArtist>>('/me/top/artists', { query: { limit: 12, time_range: 'medium_term' } }),
+
+  topTracks: () => request<ApiPaging<ApiTrack>>('/me/top/tracks', { query: { limit: 20, time_range: 'medium_term' } }),
+
+  searchAll: (q: string, offset = 0) =>
+    request<{
+      tracks?: ApiPaging<ApiTrack>;
+      albums?: ApiPaging<ApiAlbum>;
+      artists?: ApiPaging<ApiArtist>;
+      playlists?: ApiPaging<ApiPlaylist>;
+    }>('/search', { query: { q, type: 'track,album,artist,playlist', limit: 10, offset } }),
+
+  album: (id: string) =>
+    request<ApiAlbum & { tracks: ApiPaging<ApiTrack> }>(`/albums/${id}`),
+
+  albumTracks: (id: string, offset = 0) => request<ApiPaging<ApiTrack>>(`/albums/${id}/tracks`, { query: { limit: 50, offset } }),
+
+  artist: (id: string) => request<ApiArtist>(`/artists/${id}`),
+
+  artistAlbums: (id: string) =>
+    request<ApiPaging<ApiAlbum>>(`/artists/${id}/albums`, { query: { include_groups: 'album,single', limit: 50 } }),
+
+  libraryContains: (uris: string[]) => request<boolean[]>('/me/library/contains', { query: { uris: uris.join(',') } }),
+
+  saveToLibrary: (uris: string[]) => request('/me/library', { method: 'PUT', query: { uris: uris.join(',') } }),
+
+  removeFromLibrary: (uris: string[]) => request('/me/library', { method: 'DELETE', query: { uris: uris.join(',') } }),
 
   transfer: (deviceId: string, play = true) =>
     request('/me/player', { method: 'PUT', body: { device_ids: [deviceId], play } }),

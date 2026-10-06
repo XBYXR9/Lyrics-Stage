@@ -13,6 +13,9 @@ export interface TrackInfo {
   /** Smallest cover image, handy for lists. */
   artThumbUrl: string | null;
   durationMs: number;
+  /** Spotify's id of the album and of the artists, for links to their pages (not known for every song). */
+  albumId?: string;
+  artistIds?: string[];
   /** Demo tracks ship their own lyrics so the demo works offline. */
   localLyrics?: Lyrics;
 }
