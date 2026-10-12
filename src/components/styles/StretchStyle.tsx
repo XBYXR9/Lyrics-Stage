@@ -1,6 +1,6 @@
 // Stretch: centered lines where each word glows for as long as it is held, then settles back.
 // When a singer holds a word ("youuuu", "daaaay"), the letter being held grows bigger and bigger until the note ends,
-// and a bar underneath fills as the note runs. It makes the most of real word timings; estimated ones work too.
+// then shrinks back. It makes the most of real word timings; estimated ones work too.
 import { Fragment, useRef, type CSSProperties } from 'react';
 import { heldLetterIndex } from '../../lib/heldLetter';
 import { wordProgress } from '../../lib/lrc';
