@@ -189,17 +189,31 @@ describe('estimateWords weighting', () => {
 
 describe('heldLetterIndex', () => {
   const letter = (w: string) => w[heldLetterIndex(w)];
-  it('picks the vowel a singer holds', () => {
+  it('picks the vowel in a one-syllable word', () => {
     expect(letter('you')).toBe('u');
     expect(letter('day')).toBe('a');
     expect(letter('love')).toBe('o');
     expect(letter('free')).toBe('e');
     expect(letter('night,')).toBe('i');
     expect(letter('the')).toBe('e');
+    expect(letter('white')).toBe('i');
+    expect(letter('walked')).toBe('a');
+  });
+  it('picks the stressed syllable in longer words: the first, unless the word is one that is stressed later', () => {
+    expect(letter('Mustang')).toBe('u');
+    expect(letter('dreams')).toBe('a');
+    expect(letter('baby')).toBe('a');
+    expect(letter('never')).toBe('e');
+    expect(letter('city')).toBe('i');
+    expect(letter('tonight')).toBe('i');
+    expect(letter('forgetting')).toBe('e');
     expect(letter('Hello')).toBe('o');
+    expect(letter('again')).toBe('i');
+    expect(letter('makes')).toBe('a');
   });
   it('copes with words that have no usual vowel, and other scripts', () => {
     expect(letter('sky')).toBe('y');
+    expect(letter('myth')).toBe('y');
     expect(letter('hmm')).toBe('m');
     expect(letter('夜空')).toBe('空');
     expect(heldLetterIndex('...')).toBe(-1);

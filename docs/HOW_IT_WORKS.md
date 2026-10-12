@@ -254,7 +254,7 @@ tilt. In **Auto** mode it also picks the style:
 - dark and colorful covers → Neon
 - bright, upbeat songs → Karaoke
 - (Stretch is never picked automatically; choose it yourself. It makes a held word glow, and the letter being held
-  ("youuuu", "daaaay": the last sung vowel, see `src/lib/heldLetter.ts`) grows bigger and bigger until the note ends.)
+  ("youuuu", "daaaay", "Muuustang": the vowel of the stressed syllable, a good guess because the app cannot hear the singer, see `src/lib/heldLetter.ts`) grows bigger and bigger until the note ends.)
 - everything else → Apple Music
 
 ## 7. Drawing (`src/components`)
