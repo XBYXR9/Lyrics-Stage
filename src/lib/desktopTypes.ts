@@ -107,6 +107,8 @@ export interface LyricsStageDesktopApi {
   openMusicApp(app: MusicApp, query?: string): Promise<void>;
   /** Chooses which music app the desktop app follows. */
   setMusicApp(app: MusicApp): Promise<void>;
+  /** Asks Musixmatch for word timings (the page can't call it directly). Only its lyrics and token requests are allowed. */
+  musixmatchGet(pathAndQuery: string): Promise<{ status: number; body: string }>;
   setAlwaysOnTop(on: boolean): Promise<void>;
   /** Windows: how the next "listen to the sound" request is answered, with the app's own page (default) or a screen source as the picture that goes with it. */
   setSoundSource(kind: 'frame' | 'screen'): Promise<void>;

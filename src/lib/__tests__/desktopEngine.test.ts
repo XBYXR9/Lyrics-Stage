@@ -22,6 +22,7 @@ function fakeApi() {
     openSpotify: vi.fn(async () => {}),
     openMusicApp: vi.fn(async () => {}),
     setMusicApp: async () => {},
+    musixmatchGet: async () => ({ status: 0, body: '' }),
     setAlwaysOnTop: async () => {},
     setSoundSource: async () => {},
     onUpdate: () => () => {},

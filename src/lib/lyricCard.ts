@@ -232,6 +232,7 @@ export interface CardTextStyle {
 export const CARD_TEXT_STYLES: Record<StyleId, CardTextStyle> = {
   apple: { fontVar: null, weight: 800, italic: false, upper: false, center: false, accent: false, glow: false },
   karaoke: { fontVar: null, weight: 900, italic: false, upper: false, center: true, accent: true, glow: false },
+  stretch: { fontVar: null, weight: 900, italic: false, upper: false, center: true, accent: true, glow: true },
   neon: { fontVar: '--font-neon', weight: 400, italic: false, upper: false, center: true, accent: false, glow: true },
   spotlight: { fontVar: '--font-serif', weight: 600, italic: true, upper: false, center: true, accent: false, glow: false },
   typewriter: { fontVar: '--font-type', weight: 400, italic: false, upper: false, center: false, accent: false, glow: false },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateWords, findLineIndex, INTERLUDE_MIN_MS, parseLrc, parseLyricsfile, plainLyrics, singingPace, wordProgress } from '../lrc';
+import { countSyllables, estimateWords, findLineIndex, INTERLUDE_MIN_MS, parseLrc, parseLyricsfile, plainLyrics, singingPace, wordProgress } from '../lrc';
 
 describe('parseLrc', () => {
   it('parses timestamps, skips metadata and marks the first gap as an interlude', () => {
@@ -152,5 +152,36 @@ describe('timeline helpers', () => {
     const p = plainLyrics('a\n\nb', 'test');
     expect(p.kind).toBe('plain');
     expect(p.lines.map((l) => l.text)).toEqual(['a', '', 'b']);
+  });
+});
+
+describe('countSyllables', () => {
+  it('counts sung beats, not letters', () => {
+    expect(countSyllables('day')).toBe(1);
+    expect(countSyllables('love')).toBe(1);
+    expect(countSyllables('walked')).toBe(1);
+    expect(countSyllables('wanted')).toBe(2);
+    expect(countSyllables('little')).toBe(2);
+    expect(countSyllables('wonderful')).toBe(3);
+    expect(countSyllables('beautiful')).toBe(3);
+    expect(countSyllables('strengths')).toBe(1);
+    expect(countSyllables("(oh,")).toBe(1);
+    expect(countSyllables('...')).toBe(1);
+  });
+  it('counts one beat per CJK character', () => {
+    expect(countSyllables('夜空')).toBe(2);
+    expect(countSyllables('사랑해')).toBe(3);
+  });
+});
+
+describe('estimateWords weighting', () => {
+  it('gives a long single-syllable word no more time than a short two-syllable one', () => {
+    const w = estimateWords('strengths lover', 0, 3000);
+    expect(w[1].end - w[1].start).toBeGreaterThan(w[0].end - w[0].start);
+  });
+  it('holds the last word of a line a little longer', () => {
+    const w = estimateWords('the day the day', 0, 4000);
+    const dur = w.map((x) => x.end - x.start);
+    expect(dur[3]).toBeGreaterThan(dur[1]);
   });
 });

@@ -2,6 +2,7 @@
 // open, community lyrics database with time-synced lyrics. No API key needed.
 
 import { parseLrc, parseLyricsfile, plainLyrics } from './lrc';
+import { fetchMusixmatchWords, musixmatchEnabled } from './musixmatch';
 import type { Lyrics, TrackInfo } from './types';
 
 const BASE = 'https://lrclib.net/api';
@@ -188,6 +189,16 @@ async function lookup(track: TrackInfo, signal?: AbortSignal): Promise<Lyrics> {
   return fallback ? toLyrics(fallback, track.durationMs) : NONE();
 }
 
+/**
+ * LRCLIB first. When it has no real word timings and Musixmatch word timing is switched on (desktop and phone apps),
+ * Musixmatch's real word timings are used instead, if it has this song. Anything that goes wrong there is ignored.
+ */
+async function lookupWithWords(track: TrackInfo, signal?: AbortSignal): Promise<Lyrics> {
+  const base = await lookup(track, signal);
+  if (base.wordSynced || !musixmatchEnabled()) return base;
+  return (await fetchMusixmatchWords(track)) ?? base;
+}
+
 // ---- Caching: in memory for this visit + a small local cache between visits.
 
 const memory = new Map<string, Promise<Lyrics>>();
@@ -198,8 +209,8 @@ const STORE_INDEX = 'ls.lyrics.v2.index';
 const STORE_MAX = 80;
 const OLD_PREFIX = 'ls.lyrics.v1.';
 
-/** Songs are looked up again when the player corrects the song's length. */
-const cacheKey = (track: TrackInfo) => `${track.key}|${lengthSec(track) ?? '?'}`;
+/** Songs are looked up again when the player corrects the song's length, or when Musixmatch word timing is switched on or off. */
+const cacheKey = (track: TrackInfo) => `${track.key}|${lengthSec(track) ?? '?'}${musixmatchEnabled() ? '|mx' : ''}`;
 
 let oldCacheCleared = false;
 function clearOldCache() {
@@ -254,7 +265,7 @@ export function getLyrics(track: TrackInfo): Promise<Lyrics> {
     memory.set(key, p);
     return p;
   }
-  const p = lookup(track).then(
+  const p = lookupWithWords(track).then(
     (lyrics) => {
       // Only save results found with a known length; they're the reliable ones.
       if (lyrics.kind !== 'none' && lengthSec(track) !== null) writeStore(key, lyrics);

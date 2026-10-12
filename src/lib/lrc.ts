@@ -43,11 +43,35 @@ function parseTimestamp(tag: string): number | null {
   return Number(m[1]) * 60000 + Number(m[2]) * 1000 + frac;
 }
 
-/** How long a word "weighs" when spreading line time across words. */
+const CJK_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
+const VOWEL_GROUP_RE = /[aeiouyàáâãäåèéêëìíîïòóôõöùúûüýœæıаеёиоуыэюяіїєαεηιουωάέήίόύώ]+/gu;
+
+/**
+ * Roughly how many syllables a word is sung over. One sung beat per Chinese,
+ * Japanese or Korean character; otherwise groups of vowels, with the usual
+ * English silent endings ("love", "walked") taken off. Never less than 1.
+ */
+export function countSyllables(word: string): number {
+  const cjk = word.match(CJK_RE)?.length ?? 0;
+  if (cjk) return cjk;
+  let w = word.toLowerCase().replace(/[^\p{L}]/gu, '');
+  if (!w) return 1;
+  // "-es" / "-ed" / final "e" are usually silent, except after "l" ("little") or after t/d for -ed ("wanted").
+  if (/[a-z]/.test(w)) {
+    if (w.length > 3 && /(?<![aeiouy])es$/.test(w) && !/(?:ch|sh|ss|x|z|g|c)es$/.test(w)) w = w.slice(0, -2);
+    else if (w.length > 3 && /(?<![aeiouytd])ed$/.test(w)) w = w.slice(0, -2);
+    else if (w.length > 2 && /[^aeiouyl]e$/.test(w)) w = w.slice(0, -1);
+  }
+  const groups = w.match(VOWEL_GROUP_RE)?.length;
+  if (groups) return groups;
+  return Math.max(1, Math.round(w.length / 3)); // no vowels we know (other scripts): about 3 letters a beat
+}
+
+/** How long a word "weighs" when spreading line time across words: its syllables, a little for its consonants, and a breath after punctuation. */
 function wordWeight(word: string): number {
   const letters = word.match(LETTER_RE)?.length ?? 0;
-  const pause = /[,.;:!?،؛…]\s*$/.test(word) ? 1.5 : 0;
-  return Math.max(1, letters) + 0.8 + pause;
+  const pause = /[,.;:!?،؛…]\s*$/.test(word) ? 1.2 : 0;
+  return countSyllables(word) + letters * 0.12 + 0.3 + pause;
 }
 
 /** Split a line into words, keeping each word's trailing space. */
@@ -86,9 +110,13 @@ export function estimateSingingMs(text: string, gapMs: number, paceMs = DEFAULT_
   return Math.max(Math.min(300, gapMs), Math.min(gapMs * 0.9, Math.max(600, natural)));
 }
 
+/** The last word of a line is usually held a little: singers let it ring before the next line. */
+const LAST_WORD_HOLD = 1.3;
+
 export function estimateWords(text: string, start: number, end: number): LyricWord[] {
   const parts = splitWords(text);
   const weights = parts.map(wordWeight);
+  if (parts.length >= 3) weights[weights.length - 1] *= LAST_WORD_HOLD;
   const total = weights.reduce((a, b) => a + b, 0) || 1;
   const span = Math.max(1, end - start);
   let acc = 0;

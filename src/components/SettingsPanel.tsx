@@ -7,6 +7,7 @@ import { audioCounting, getAudioStatus, MAX_SOUND_DELAY_MS, peekAudioLoudness, s
 import { BEAT_PREVIEW_EVENT } from '../lib/beat';
 import { desktopApi } from '../lib/desktopTypes';
 import { isNativeApp } from '../lib/nativeApp';
+import { musixmatchAvailable } from '../lib/musixmatch';
 import type { EngineKind } from '../lib/engine';
 import { COLOR_THEMES, isHexColor, themeAccent } from '../lib/colorTheme';
 import { MUSIC_APP_LABEL, MUSIC_APPS } from '../lib/desktopTypes';
@@ -149,6 +150,22 @@ export function SettingsPanel({
             Most songs only have line timing, so word timing is estimated. “Only exact” uses word highlighting just when
             the lyrics have real word timing.
           </p>
+          {musixmatchAvailable() && (
+            <>
+              <Toggle
+                checked={settings.musixmatchWords}
+                onChange={(v) => set({ musixmatchWords: v })}
+                label="Use real word timing from Musixmatch"
+              />
+              <p className="hint">
+                Musixmatch has exact word-by-word timing for many songs, so the highlight lands on each word instead of an
+                estimate. This asks Musixmatch for each song through the same route its own phone app uses. That route is
+                unofficial and not meant for other apps, so it can stop working at any time or be blocked; songs it
+                doesn’t have, and any failure, simply use the normal lyrics. The song’s name and artist are sent to
+                Musixmatch. Off by default.
+              </p>
+            </>
+          )}
         </Section>
 
         <Section title="Instrumental breaks">

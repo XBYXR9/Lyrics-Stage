@@ -1026,6 +1026,12 @@ kbd {
   color: var(--accent);
   font-weight: 900;
 }
+.sc-stretch .sc-preview {
+  color: var(--accent);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 10px var(--accent);
+}
 .sc-neon .sc-preview {
   font-family: var(--font-neon);
   color: #fff;

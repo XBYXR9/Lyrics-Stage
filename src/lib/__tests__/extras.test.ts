@@ -128,7 +128,7 @@ describe('background picture', () => {
 
 describe('lyric styles', () => {
   it('every style has a name, a blurb and a way to be written on a card', () => {
-    expect(STYLES.map((s) => s.id)).toEqual(expect.arrayContaining(['typewriter', 'flow', 'retro', 'minimal', 'depth']));
+    expect(STYLES.map((s) => s.id)).toEqual(expect.arrayContaining(['typewriter', 'flow', 'retro', 'minimal', 'depth', 'stretch']));
     for (const s of STYLES) {
       expect(s.name).toBeTruthy();
       expect(s.blurb).toBeTruthy();
