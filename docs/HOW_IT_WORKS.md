@@ -257,6 +257,25 @@ tilt. In **Auto** mode it also picks the style:
   ("youuuu", "daaaay", "Muuustang": the vowel of the stressed syllable, a good guess because the app cannot hear the singer, see `src/lib/heldLetter.ts`) grows bigger and bigger until the note ends.)
 - everything else → Apple Music
 
+### Hearing the singer (Windows desktop app, real sound on)
+
+The Stretch style can listen for the singer actually holding a note (`src/lib/sustain.ts`), using the same spectrum
+snapshots as the bars. A held vowel is a steady sound with clear peaks in the voice range (150–3000 Hz): the same pattern
+of peaks, frame after frame. A melody changing note, drum hits and hiss are not. The detector scores how steady and
+peaky the sound is, and reports for how long it has been held:
+
+- a short drop-out (a drum hit, a consonant) doesn't end a hold, but a sound that no longer looks like the held note
+  starts a new one, so the notes of a melody aren't chained together;
+- a sound that is steady *all the time* (a pad under the whole song) is measured against the song's own recent average
+  (heard late, so a note being held doesn't raise the bar against itself), so only a note that stands out counts. The
+  first few seconds of a new pad can still fool it;
+- the reading is delayed like the bars (Bluetooth), and only counts inside the song's playback window.
+
+The app hears the whole mix, not only the voice, so this is a good guess and not magic. Only the word being sung (by the
+lyrics timing) can grow, and the letter follows the sound smoothly: it grows while the note is held and shrinks as soon
+as it stops. Without the real sound (phone, Mac, Linux, the web, or the setting off), the word's timing decides instead.
+It was developed and tested on made-up sounds (sung vowels, melodies, drums, hiss, a pad), not on real music.
+
 ## 7. Drawing (`src/components`)
 
 - **Background:** drawn on a canvas only about 128 px wide, blurred and stretched to fill the screen. That keeps it

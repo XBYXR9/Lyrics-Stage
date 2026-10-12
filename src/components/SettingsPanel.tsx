@@ -576,8 +576,9 @@ function SoundSection({ settings }: { settings: Settings }) {
         </button>
       )}
       <p className="hint">
-        The bars, the beat flash and the no-lyrics scene then hit the real beat. The sound is analysed inside the app and
-        never recorded or sent anywhere.
+        The bars, the beat flash and the no-lyrics scene then hit the real beat. In the <b>Stretch</b> style, the
+        letter of a held word (“youuuu”) grows for as long as the note is really held. The sound is analysed inside the
+        app and never recorded or sent anywhere.
       </p>
       <p className="hint">
         <b>Only while a song plays:</b> the sound counts only when Spotify is playing and the position is inside the
