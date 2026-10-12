@@ -22,12 +22,12 @@ songs together, the lyrics blend too.
   seek, shuffle, repeat, volume, pick the device) and Settings. The **Lyrics** tab opens Lyrics Stage with an animation:
   it grows out of the cover in the player bar until it fills the window. The music plays on your Spotify devices (the
   Spotify app on your computer, your phone, a speaker) or, in the web version, in the browser tab ("Play here").
-- **Eleven styles, plus Auto.** Apple Music, Karaoke (with a bouncing ball), Stretch (words swell while they are held), Neon, Spotlight, Kinetic, Typewriter, Gradient flow,
+- **Eleven styles, plus Auto.** Apple Music, Karaoke (with a bouncing ball), Stretch (a held "youuuu" grows letter by letter), Neon, Spotlight, Kinetic, Typewriter, Gradient flow,
   Retro VHS, Minimal and 3D depth. **Auto** picks one that fits each song's pace and mood. Each song can keep its own
   style and timing nudge.
 - **Better word timing.** When a song only has line timing, the words are timed by their syllables (not letters), with the
-  last word of a line held a little longer. In the desktop and phone apps you can also switch on real word-by-word timing
-  from Musixmatch (Settings; it uses an unofficial route, so it is off by default).
+  last word of a line held a little longer. In the desktop and phone apps you can also switch on exact word-by-word timing
+  (Settings → Exact word timing; it uses an unofficial route, so it is off by default).
 - **Your colors, backgrounds and a sleep timer.** Color themes (or one color of your own) instead of each cover's colors;
   backgrounds: moving album art, color flow, a still blurred cover, a calm gradient, plain black or your own picture; and
   a sleep timer that dims the screen and pauses the music.

@@ -155,14 +155,14 @@ export function SettingsPanel({
               <Toggle
                 checked={settings.musixmatchWords}
                 onChange={(v) => set({ musixmatchWords: v })}
-                label="Use real word timing from Musixmatch"
+                label="Exact word timing"
               />
               <p className="hint">
-                Musixmatch has exact word-by-word timing for many songs, so the highlight lands on each word instead of an
-                estimate. This asks Musixmatch for each song through the same route its own phone app uses. That route is
-                unofficial and not meant for other apps, so it can stop working at any time or be blocked; songs it
-                doesn’t have, and any failure, simply use the normal lyrics. The song’s name and artist are sent to
-                Musixmatch. Off by default.
+                For many songs this finds the exact moment each word is sung, so the highlight lands on every word and a held
+                note (“youuuu”) stretches for as long as it lasts, instead of using an estimate. It asks an online lyrics
+                service (Musixmatch) for each song, sending the song’s name and artist. That route isn’t official, so it
+                can stop working at any time; songs it doesn’t have, and any failure, just use the normal lyrics. Off by
+                default.
               </p>
             </>
           )}

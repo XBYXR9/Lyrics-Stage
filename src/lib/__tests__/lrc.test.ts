@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { heldLetterIndex } from '../heldLetter';
 import { countSyllables, estimateWords, findLineIndex, INTERLUDE_MIN_MS, parseLrc, parseLyricsfile, plainLyrics, singingPace, wordProgress } from '../lrc';
 
 describe('parseLrc', () => {
@@ -183,5 +184,24 @@ describe('estimateWords weighting', () => {
     const w = estimateWords('the day the day', 0, 4000);
     const dur = w.map((x) => x.end - x.start);
     expect(dur[3]).toBeGreaterThan(dur[1]);
+  });
+});
+
+describe('heldLetterIndex', () => {
+  const letter = (w: string) => w[heldLetterIndex(w)];
+  it('picks the vowel a singer holds', () => {
+    expect(letter('you')).toBe('u');
+    expect(letter('day')).toBe('a');
+    expect(letter('love')).toBe('o');
+    expect(letter('free')).toBe('e');
+    expect(letter('night,')).toBe('i');
+    expect(letter('the')).toBe('e');
+    expect(letter('Hello')).toBe('o');
+  });
+  it('copes with words that have no usual vowel, and other scripts', () => {
+    expect(letter('sky')).toBe('y');
+    expect(letter('hmm')).toBe('m');
+    expect(letter('夜空')).toBe('空');
+    expect(heldLetterIndex('...')).toBe(-1);
   });
 });

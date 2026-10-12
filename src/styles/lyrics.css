@@ -465,6 +465,20 @@
   filter: drop-shadow(0 0 calc(var(--s, 0) * (0.1em + var(--h, 0) * 0.35em)) color-mix(in srgb, var(--accent) 85%, transparent));
   will-change: transform;
 }
+/* The letter a singer holds ("youuuu"): it grows bigger and bigger (--g, up to --k) and shrinks back when the word ends. */
+.st-w.has-held {
+  transform: none;
+}
+.st-held {
+  display: inline-block;
+  /* room for the grown letter, so it doesn't sit on its neighbours (always there, so the line never shifts) */
+  margin: 0 calc(var(--k, 0.6) * 0.14em);
+  transform-origin: 50% 82%;
+  transform: scale(calc(1 + var(--g, 0) * var(--k, 0.6) * 0.55), calc(1 + var(--g, 0) * var(--k, 0.6)));
+  /* its own color: it grows past the word's box, where the word's gradient doesn't reach */
+  -webkit-text-fill-color: color-mix(in srgb, var(--st-lit) calc(var(--on, 0) * 100%), var(--st-dim));
+  will-change: transform;
+}
 .st-w::after {
   content: '';
   position: absolute;

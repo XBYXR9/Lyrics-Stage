@@ -1,9 +1,9 @@
 // Real word-by-word timings from Musixmatch ("richsync"), for the desktop and phone apps.
 //
-// This uses the same unofficial route as Musixmatch's own mobile app, which Spicetify's Lyrics Plus also uses. It can
-// stop working at any time, so it is off by default (Settings → Word timing) and everything falls back to LRCLIB.
+// This uses the same unofficial route as Musixmatch's own mobile app. It can stop working at any time, so it is off by
+// default (Settings → Word-by-word highlight → Exact word timing) and everything falls back to LRCLIB.
 // Web pages can't call it (the service doesn't allow that), so the desktop app asks through its main process and the
-// phone app through its native network layer. Written for this app; no code is copied from Spicetify.
+// phone app through its native network layer. Written for this app.
 import { CapacitorHttp } from '@capacitor/core';
 import { desktopApi } from './desktopTypes';
 import { buildSynced } from './lrc';
