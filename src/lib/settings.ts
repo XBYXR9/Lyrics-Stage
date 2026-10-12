@@ -66,6 +66,8 @@ export interface Settings {
   translate: boolean;
   /** The language to translate into (a code such as "en" or "ar"). */
   translateTo: string;
+  /** Desktop and phone apps: look up exact word-by-word timing for each song online when it exists (an unofficial route, so off by default). */
+  musixmatchWords: boolean;
   /** Desktop app: which music app to follow. */
   musicApp: MusicApp;
 }
@@ -108,6 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rememberPerSong: true,
   translate: false,
   translateTo: defaultLanguage(),
+  musixmatchWords: false,
   musicApp: 'spotify',
 };
 

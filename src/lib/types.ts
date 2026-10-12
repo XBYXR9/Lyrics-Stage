@@ -64,7 +64,7 @@ export interface Palette {
   brightness: number;
 }
 
-export type StyleId = 'apple' | 'karaoke' | 'neon' | 'spotlight' | 'kinetic' | 'typewriter' | 'flow' | 'retro' | 'minimal' | 'depth';
+export type StyleId = 'apple' | 'karaoke' | 'stretch' | 'neon' | 'spotlight' | 'kinetic' | 'typewriter' | 'flow' | 'retro' | 'minimal' | 'depth';
 export type StyleChoice = StyleId | 'auto';
 
 export interface Vibe {

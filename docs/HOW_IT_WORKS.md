@@ -214,8 +214,17 @@ The parser understands:
 Most songs only have **line** timing. To make word-by-word highlighting possible anyway, the parser estimates word
 timing. First it measures the song's **pace** (ms per letter) on lines that run straight into the next one: about 65
 for rap, 100–115 for pop, 160 for a slow ballad. Each line is then sung at that pace, but never longer than the gap to
-the next line, so a short line before a pause isn't stretched over the pause. That time is spread over the words,
-giving longer words and pauses after punctuation more time.
+the next line, so a short line before a pause isn't stretched over the pause. That time is spread over the words by
+how long each one is *sung*: its **syllables** count (not its letters, so "strengths" gets less time than "wonderful"),
+a breath is added after punctuation, and the last word of a line is held a little longer, as singers do.
+
+**Exact word timing (desktop and phone apps, off by default).** Musixmatch has exact word-by-word timing
+("richsync") for many songs. Settings → Word-by-word highlight → *Exact word timing* makes the app ask for it
+(`src/lib/musixmatch.ts`) when LRCLIB has no real word timing. It uses the same unofficial route as Musixmatch's own
+phone app, so it can break or be blocked at any time. Web pages can't call it, so the desktop app asks through its main process (`electron/musixmatch.ts`, which only allows the
+lyrics and token requests) and the phone app through Capacitor's native HTTP. The answer's line and word offsets become
+real word timings; a song whose length differs by more than 5 s is another recording and is ignored. Any failure falls
+back to LRCLIB.
 
 It also:
 
@@ -244,6 +253,8 @@ tilt. In **Auto** mode it also picks the style:
 - very calm → Spotlight
 - dark and colorful covers → Neon
 - bright, upbeat songs → Karaoke
+- (Stretch is never picked automatically; choose it yourself. It makes a held word glow, and the letter being held
+  ("youuuu", "daaaay": the last sung vowel, see `src/lib/heldLetter.ts`) grows bigger and bigger until the note ends.)
 - everything else → Apple Music
 
 ## 7. Drawing (`src/components`)

@@ -8,6 +8,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } from 'el
 import path from 'node:path';
 import { isMusicApp, validateCommand, type DesktopSnapshot, type MusicApp } from '../src/lib/desktopTypes';
 import { createBridge } from './bridge';
+import { musixmatchGet } from './musixmatch';
 import { mayHearSound, parseSoundSource, type SoundVideoSource } from './soundAccess';
 import { cancelSpotifyLogin, signInWithSpotify } from './spotifyLogin';
 import { startUpdates } from './updater';
@@ -127,6 +128,8 @@ let soundVideoSource: SoundVideoSource = 'frame';
 ipcMain.handle('ls:sound-source', (_event, kind: unknown) => {
   soundVideoSource = parseSoundSource(kind);
 });
+
+ipcMain.handle('ls:musixmatch', (_event, pathAndQuery: unknown) => musixmatchGet(pathAndQuery));
 
 ipcMain.handle('ls:always-on-top', (_event, on: unknown) => {
   win?.setAlwaysOnTop(on === true, 'floating');

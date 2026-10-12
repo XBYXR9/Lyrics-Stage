@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { estimateWords, findLineIndex, INTERLUDE_MIN_MS, parseLrc, parseLyricsfile, plainLyrics, singingPace, wordProgress } from '../lrc';
+import { heldLetterIndex } from '../heldLetter';
+import { countSyllables, estimateWords, findLineIndex, INTERLUDE_MIN_MS, parseLrc, parseLyricsfile, plainLyrics, singingPace, wordProgress } from '../lrc';
 
 describe('parseLrc', () => {
   it('parses timestamps, skips metadata and marks the first gap as an interlude', () => {
@@ -152,5 +153,75 @@ describe('timeline helpers', () => {
     const p = plainLyrics('a\n\nb', 'test');
     expect(p.kind).toBe('plain');
     expect(p.lines.map((l) => l.text)).toEqual(['a', '', 'b']);
+  });
+});
+
+describe('countSyllables', () => {
+  it('counts sung beats, not letters', () => {
+    expect(countSyllables('day')).toBe(1);
+    expect(countSyllables('love')).toBe(1);
+    expect(countSyllables('walked')).toBe(1);
+    expect(countSyllables('wanted')).toBe(2);
+    expect(countSyllables('little')).toBe(2);
+    expect(countSyllables('wonderful')).toBe(3);
+    expect(countSyllables('beautiful')).toBe(3);
+    expect(countSyllables('strengths')).toBe(1);
+    expect(countSyllables("(oh,")).toBe(1);
+    expect(countSyllables('...')).toBe(1);
+  });
+  it('counts one beat per CJK character', () => {
+    expect(countSyllables('夜空')).toBe(2);
+    expect(countSyllables('사랑해')).toBe(3);
+  });
+});
+
+describe('estimateWords weighting', () => {
+  it('gives a long single-syllable word no more time than a short two-syllable one', () => {
+    const w = estimateWords('strengths lover', 0, 3000);
+    expect(w[1].end - w[1].start).toBeGreaterThan(w[0].end - w[0].start);
+  });
+  it('holds the last word of a line a little longer', () => {
+    const w = estimateWords('the day the day', 0, 4000);
+    const dur = w.map((x) => x.end - x.start);
+    expect(dur[3]).toBeGreaterThan(dur[1]);
+  });
+});
+
+describe('heldLetterIndex', () => {
+  const letter = (w: string) => w[heldLetterIndex(w)];
+  it('picks the vowel a singer holds', () => {
+    expect(letter('you')).toBe('u');
+    expect(letter('day')).toBe('a');
+    expect(letter('love')).toBe('o');
+    expect(letter('free')).toBe('e');
+    expect(letter('night,')).toBe('i');
+    expect(letter('the')).toBe('e');
+    expect(letter('Hello')).toBe('o');
+  });
+  it('copes with words that have no usual vowel, and other scripts', () => {
+    expect(letter('sky')).toBe('y');
+    expect(letter('hmm')).toBe('m');
+    expect(letter('夜空')).toBe('空');
+    expect(heldLetterIndex('...')).toBe(-1);
+  });
+});
+
+describe('letterGrowth (the held letter: bigger, then small again)', () => {
+  it('starts small, grows through the note, peaks near its end, and is small again right after', async () => {
+    const { letterGrowth } = await import('../../components/styles/StretchStyle');
+    const g = (t: number) => letterGrowth(1000, 3000, t);
+    expect(g(900)).toBe(0);
+    expect(g(1000)).toBe(0);
+    expect(g(1800)).toBeGreaterThan(g(1400));
+    expect(g(2400)).toBeGreaterThan(g(1800));
+    expect(g(2600)).toBeCloseTo(1, 1); // near the peak, 80% into the note
+    expect(g(2900)).toBeLessThan(g(2600)); // already shrinking before the note ends
+    expect(g(3000)).toBeLessThan(0.5);
+    expect(g(3200)).toBeCloseTo(0, 5); // small again
+    expect(g(9000)).toBe(0);
+    for (let t = 800; t < 3500; t += 50) {
+      expect(g(t)).toBeGreaterThanOrEqual(0);
+      expect(g(t)).toBeLessThanOrEqual(1.0001);
+    }
   });
 });

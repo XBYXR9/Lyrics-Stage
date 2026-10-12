@@ -7,6 +7,7 @@ import { audioCounting, getAudioStatus, MAX_SOUND_DELAY_MS, peekAudioLoudness, s
 import { BEAT_PREVIEW_EVENT } from '../lib/beat';
 import { desktopApi } from '../lib/desktopTypes';
 import { isNativeApp } from '../lib/nativeApp';
+import { musixmatchAvailable } from '../lib/musixmatch';
 import type { EngineKind } from '../lib/engine';
 import { COLOR_THEMES, isHexColor, themeAccent } from '../lib/colorTheme';
 import { MUSIC_APP_LABEL, MUSIC_APPS } from '../lib/desktopTypes';
@@ -149,6 +150,22 @@ export function SettingsPanel({
             Most songs only have line timing, so word timing is estimated. “Only exact” uses word highlighting just when
             the lyrics have real word timing.
           </p>
+          {musixmatchAvailable() && (
+            <>
+              <Toggle
+                checked={settings.musixmatchWords}
+                onChange={(v) => set({ musixmatchWords: v })}
+                label="Exact word timing"
+              />
+              <p className="hint">
+                For many songs this finds the exact moment each word is sung, so the highlight lands on every word and a held
+                note (“youuuu”) stretches for as long as it lasts, instead of using an estimate. It asks an online lyrics
+                service (Musixmatch) for each song, sending the song’s name and artist. That route isn’t official, so it
+                can stop working at any time; songs it doesn’t have, and any failure, just use the normal lyrics. Off by
+                default.
+              </p>
+            </>
+          )}
         </Section>
 
         <Section title="Instrumental breaks">

@@ -10,6 +10,7 @@ import { NeonStyle } from './NeonStyle';
 import { RetroStyle } from './RetroStyle';
 import type { StyleProps } from './shared';
 import { SpotlightStyle } from './SpotlightStyle';
+import { StretchStyle } from './StretchStyle';
 import { TypewriterStyle } from './TypewriterStyle';
 
 export interface StyleMeta {
@@ -32,6 +33,12 @@ export const STYLES: StyleMeta[] = [
     name: 'Karaoke',
     blurb: 'Centered lines fill with color, with a bouncing ball.',
     component: KaraokeStyle,
+  },
+  {
+    id: 'stretch',
+    name: 'Stretch',
+    blurb: 'Words swell and glow for as long as they are held.',
+    component: StretchStyle,
   },
   { id: 'neon', name: 'Neon', blurb: 'Glowing words flicker on over a retro grid.', component: NeonStyle },
   {
