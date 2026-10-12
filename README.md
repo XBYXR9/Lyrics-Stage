@@ -25,6 +25,8 @@ songs together, the lyrics blend too.
 - **Eleven styles, plus Auto.** Apple Music, Karaoke (with a bouncing ball), Stretch (a held "youuuu" grows letter by letter), Neon, Spotlight, Kinetic, Typewriter, Gradient flow,
   Retro VHS, Minimal and 3D depth. **Auto** picks one that fits each song's pace and mood. Each song can keep its own
   style and timing nudge.
+- **Hears the singer (Windows desktop app).** With the real sound switched on, the Stretch style listens for the singer
+  holding a note and grows the held letter for exactly as long as the note lasts.
 - **Better word timing.** When a song only has line timing, the words are timed by their syllables (not letters), with the
   last word of a line held a little longer. In the desktop and phone apps you can also switch on exact word-by-word timing
   (Settings → Exact word timing; it uses an unofficial route, so it is off by default).

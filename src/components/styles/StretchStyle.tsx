@@ -1,9 +1,12 @@
 // Stretch: centered lines where each word glows for as long as it is held, then settles back.
 // When a singer holds a word ("youuuu", "daaaay"), the letter being held grows bigger and bigger until the note ends,
-// then shrinks back. It makes the most of real word timings; estimated ones work too.
+// then shrinks back. With the real sound on (Windows desktop app) the app listens for the singer actually holding a
+// note, so the letter grows for exactly as long as the note lasts. Otherwise the word's timing decides.
 import { Fragment, useRef, type CSSProperties } from 'react';
+import { audioLive, readAudioLevels, readSustain } from '../../lib/audioLevels';
 import { heldLetterIndex } from '../../lib/heldLetter';
 import { wordProgress } from '../../lib/lrc';
+import { BAR_COUNT } from '../../lib/pulse';
 import { Dots, paintDots } from './Dots';
 import { clamp01, seekTarget, useLyricTimeline, useStackOffsets, wordByWord, type StyleProps } from './shared';
 
@@ -16,6 +19,13 @@ const SETTLE_MS = 380;
 /** A word is "held" (its letter grows) when it is sung at least this long. Estimated timings need a longer one to be sure. */
 const LETTER_HOLD_REAL_MS = 650;
 const LETTER_HOLD_ESTIMATED_MS = 1100;
+/** When the real sound is on, any word sung at least this long may turn out to be held. */
+const LETTER_AUDIO_MIN_MS = 300;
+/** A note held this long (ms) starts to grow its letter, and is at full size after this much more. */
+const AUDIO_GROW_FROM_MS = 200;
+const AUDIO_GROW_RANGE_MS = 1200;
+/** How far (1 = doubles in height) the letter grows for a note heard held for a long time. */
+const AUDIO_REACH = 1.1;
 /** The grown letter is at its biggest this far into the note, then shrinks back so it is small again as the note ends. */
 const LETTER_PEAK_AT = 0.8;
 /** The shrinking finishes this long after the note ends at the latest. */
@@ -36,6 +46,11 @@ export function letterGrowth(start: number, end: number, t: number): number {
   if (t < peakAt) return Math.pow(clamp01((t - start) / (peakAt - start)), 1.35);
   const back = clamp01((t - peakAt) / (end - peakAt + LETTER_SETTLE_MS));
   return 1 - back * back * (3 - 2 * back); // smooth back down to 0
+}
+
+/** 0..1: how big the held letter should be for a note the real sound has been holding for `heldMs`. */
+export function growthFromHeld(heldMs: number): number {
+  return Math.pow(clamp01((heldMs - AUDIO_GROW_FROM_MS) / AUDIO_GROW_RANGE_MS), 1.35);
 }
 
 /** How far the held letter can grow (1 = it doubles in height), by how long the note is: about 0.4 for a short hold up to 1.3 for a long one. */
@@ -61,11 +76,25 @@ export function StretchStyle(props: StyleProps) {
   const perWord = wordByWord(lyrics, sweep);
   const lineEls = useRef(new Map<number, HTMLElement>());
   const wordEls = useRef(new Map<number, (HTMLElement | null)[]>());
+  const scratch = useRef(new Float32Array(BAR_COUNT));
+  /** How big each held letter is on screen while the real sound drives it (it follows the sound smoothly, rising slower than it falls). */
+  const letterSize = useRef(new WeakMap<HTMLElement, number>());
 
   const active = useLyricTimeline(props, (t, idx) => {
     const line = lines[idx];
     if (!line) return;
     if (line.interlude) return paintDots(lineEls.current.get(idx)?.querySelector<HTMLElement>('.dots'), line, t);
+    // The real sound: how long a note has been held (null when it isn't available, then the word's timing decides).
+    let heard: ReturnType<typeof readSustain> = null;
+    if (perWord && !reduceMotion && audioLive()) {
+      readAudioLevels(scratch.current); // this is what looks at the sound; cheap to call every frame
+      heard = readSustain();
+    }
+    // The word being sung now: the latest one that has started (a little early, as the sound comes first).
+    let singing = -1;
+    line.words.forEach((w, j) => {
+      if (w.start - 120 <= t) singing = j;
+    });
     // The line that has just ended is still settling while the next one starts.
     for (const i of [idx - 1, idx]) {
       const l = lines[i];
@@ -83,7 +112,22 @@ export function StretchStyle(props: StyleProps) {
         const s = perWord && !reduceMotion ? swell(w.start, w.end, t) : 0;
         el.style.setProperty('--s', s.toFixed(3));
         el.style.setProperty('--on', t >= w.start || !perWord ? '1' : '0');
-        if (el.dataset.held) el.style.setProperty('--g', perWord && !reduceMotion ? letterGrowth(w.start, w.end, t).toFixed(3) : '0');
+        if (el.dataset.held) {
+          let g = 0;
+          if (perWord && !reduceMotion) {
+            // What the word's own timing says. With the real sound on, short words only grow when the sound says so.
+            const byTiming = el.dataset.timing ? letterGrowth(w.start, w.end, t) : 0;
+            if (heard) {
+              // Listening: grow for as long as the note is really held, with a little left of what the timing says
+              // in case the sound is hard to read. Only the word being sung can grow.
+              const target = i === idx && j === singing && t <= w.end + 600 ? growthFromHeld(heard.heldMs) * clamp01(heard.score / 0.5) : 0;
+              const now = letterSize.current.get(el) ?? 0;
+              g = now + (Math.max(target, 0.4 * byTiming) - now) * (target > now ? 0.2 : 0.3);
+              letterSize.current.set(el, g);
+            } else g = byTiming;
+          }
+          el.style.setProperty('--g', g.toFixed(3));
+        }
       });
     }
   });
@@ -115,13 +159,16 @@ export function StretchStyle(props: StyleProps) {
               line.words.map((w, j) => {
                 const shown = w.text.trimEnd();
                 const dur = w.end - w.start;
-                const heldAt = !line.rtl && dur >= (lyrics.wordSynced ? LETTER_HOLD_REAL_MS : LETTER_HOLD_ESTIMATED_MS) ? heldLetterIndex(shown) : -1;
+                const listening = audioLive();
+                const longEnough = dur >= (listening ? LETTER_AUDIO_MIN_MS : lyrics.wordSynced ? LETTER_HOLD_REAL_MS : LETTER_HOLD_ESTIMATED_MS);
+                const heldAt = !line.rtl && longEnough ? heldLetterIndex(shown) : -1;
                 const letters = heldAt >= 0 ? Array.from(shown) : [];
                 return (
                   <Fragment key={j}>
                     <span
                       className={`st-w${w.backing ? ' is-bg' : ''}${heldAt >= 0 ? ' has-held' : ''}`}
                       data-held={heldAt >= 0 ? '1' : undefined}
+                      data-timing={heldAt >= 0 && dur >= (lyrics.wordSynced ? LETTER_HOLD_REAL_MS : LETTER_HOLD_ESTIMATED_MS) ? '1' : undefined}
                       data-before={heldAt >= 0 ? (heldAt / letters.length).toFixed(4) : undefined}
                       data-letter={heldAt >= 0 ? (1 / letters.length).toFixed(4) : undefined}
                       style={
@@ -133,7 +180,7 @@ export function StretchStyle(props: StyleProps) {
                           '--g': 0,
                           '--on': slot < 0 ? 1 : 0,
                           '--h': holdOf(dur).toFixed(3),
-                          '--k': letterReach(dur).toFixed(2),
+                          '--k': (listening ? AUDIO_REACH : letterReach(dur)).toFixed(2),
                         } as CSSProperties
                       }
                       ref={(el) => {

@@ -14,6 +14,7 @@
 // rhythm in pulse.ts.
 import { desktopApi } from './desktopTypes';
 import { BAR_COUNT } from './pulse';
+import { SustainDetector, type SustainReading } from './sustain';
 
 const LOW_HZ = 45;
 const HIGH_HZ = 12000;
@@ -255,6 +256,10 @@ export class LevelReader {
   private readonly line = new DelayLine();
   private readonly meterBuf: Uint8Array<ArrayBuffer>;
   private beatState = newBeatState();
+  private readonly sustainDetector = new SustainDetector();
+  /** What the held-note detector said, with when: held back by the delay like the bars. */
+  private sustainQueue: { at: number; reading: SustainReading }[] = [];
+  private sustainShown: SustainReading | null = null;
   private spectrum: Uint8Array<ArrayBuffer>;
   private lastReadAt = -Infinity;
   private lastSoundAt = 0;
@@ -290,6 +295,9 @@ export class LevelReader {
     this.state.smooth.fill(0);
     this.state.peak = 0;
     this.beatState = newBeatState();
+    this.sustainDetector.reset();
+    this.sustainQueue.length = 0;
+    this.sustainShown = null;
     this.warm = open ? WARM_UP_READS : 0;
   }
 
@@ -302,6 +310,7 @@ export class LevelReader {
     if (next === this.delayMs) return;
     this.delayMs = next;
     this.line.clear();
+    this.sustainQueue.length = 0;
   }
 
   /** The strength (0..1) of a strong beat since the last call, or 0. */
@@ -327,7 +336,11 @@ export class LevelReader {
       let beat = 0;
       if (this.warm > 0) {
         if (loud) this.warm--;
-      } else beat = detectBeat(bass, this.beatState, now);
+      } else {
+        beat = detectBeat(bass, this.beatState, now);
+        this.sustainQueue.push({ at: now, reading: this.sustainDetector.push(this.spectrum, this.sampleRate, now) });
+        if (this.sustainQueue.length > 256) this.sustainQueue.shift();
+      }
       this.heard = now - this.lastSoundAt < SILENCE_MS;
       if (this.delayMs > 0) this.line.push(now, this.bars, beat);
       else {
@@ -339,9 +352,19 @@ export class LevelReader {
       const got = this.line.release(now - this.delayMs, this.shown);
       if (got && got.beat > 0) this.pendingBeat = Math.max(this.pendingBeat, got.beat);
     }
+    // The held-note reading is delayed the same way (the newest one that is old enough).
+    while (this.sustainQueue.length && this.sustainQueue[0].at <= now - this.delayMs) this.sustainShown = this.sustainQueue.shift()!.reading;
     if (!this.heard) return false;
     out.set(this.shown.subarray(0, out.length));
     return true;
+  }
+
+  /**
+   * How long the music has been holding a note (see sustain.ts), or null when the real sound isn't counting right
+   * now: the window is closed, or nothing has been heard for a while. Call read() first, in the same frame.
+   */
+  sustain(): SustainReading | null {
+    return this.open && this.heard ? this.sustainShown : null;
   }
 
   /** How loud the sound is right now (0..1), whether or not the window is open. For the level meter in Settings. */
@@ -407,6 +430,14 @@ let reader: LevelReader | null = null;
 let starting: Promise<boolean> | null = null;
 let wantedDelayMs = 0;
 let wantedWindow = false;
+
+/**
+ * How long the real sound has been holding a steady note (see sustain.ts), or null when the real sound isn't available
+ * or isn't counting. Call readAudioLevels() in the same frame first: that is what looks at the sound.
+ */
+export function readSustain(): SustainReading | null {
+  return reader ? reader.sustain() : null;
+}
 
 /** Is the app listening to the sound right now? */
 export function audioLive(): boolean {
