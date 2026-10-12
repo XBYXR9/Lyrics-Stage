@@ -225,3 +225,18 @@ describe('letterGrowth (the held letter: bigger, then small again)', () => {
     }
   });
 });
+
+describe('pieceProgress (a held word is filled in pieces)', () => {
+  it('sweeps the part before the held letter, then the part after it', async () => {
+    const { pieceProgress } = await import('../../components/styles/StretchStyle');
+    // "told": 1 letter before the held o, the o itself, 2 after
+    expect(pieceProgress(0, 0.25, 0.25)).toEqual({ first: 0, last: 0 });
+    expect(pieceProgress(0.125, 0.25, 0.25)).toEqual({ first: 0.5, last: 0 });
+    expect(pieceProgress(0.5, 0.25, 0.25)).toEqual({ first: 1, last: 0 });
+    expect(pieceProgress(0.75, 0.25, 0.25).last).toBeCloseTo(0.5, 5);
+    expect(pieceProgress(0.875, 0.25, 0.25).last).toBeCloseTo(0.75, 5);
+    expect(pieceProgress(1, 0.25, 0.25)).toEqual({ first: 1, last: 1 });
+    // a held letter at the start of the word ("oh"): nothing in front of it
+    expect(pieceProgress(0, 0, 0.5).first).toBe(1);
+  });
+});

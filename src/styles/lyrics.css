@@ -461,18 +461,31 @@
   background-image: linear-gradient(90deg, var(--st-lit) var(--p), var(--st-dim) var(--p));
   /* --s: 0..1 how much the word is swelling now. --h: 0..1 how long it is held. */
   transform-origin: 50% 85%;
-  transform: scale(calc(1 + var(--s, 0) * (0.04 + var(--h, 0) * 0.36)), calc(1 + var(--s, 0) * (0.04 + var(--h, 0) * 0.16)));
+  transform: scale(calc(1 + var(--s, 0) * (0.03 + var(--h, 0) * 0.1)), calc(1 + var(--s, 0) * (0.03 + var(--h, 0) * 0.1)));
   filter: drop-shadow(0 0 calc(var(--s, 0) * (0.1em + var(--h, 0) * 0.35em)) color-mix(in srgb, var(--accent) 85%, transparent));
   will-change: transform;
 }
 /* The letter a singer holds ("youuuu"): it grows bigger and bigger (--g, up to --k) and shrinks back when the word ends. */
 .st-w.has-held {
   transform: none;
+  /* drawn in pieces (see .st-seg), not as one gradient-filled word */
+  background: none;
+}
+.st-seg {
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.st-seg-a {
+  background-image: linear-gradient(90deg, var(--st-lit) var(--pa, 0%), var(--st-dim) var(--pa, 0%));
+}
+.st-seg-b {
+  background-image: linear-gradient(90deg, var(--st-lit) var(--pb, 0%), var(--st-dim) var(--pb, 0%));
 }
 .st-held {
   display: inline-block;
   /* room for the grown letter, so it doesn't sit on its neighbours (always there, so the line never shifts) */
-  margin: 0 calc(var(--k, 0.6) * 0.14em);
+  margin: 0 calc(var(--k, 0.6) * 0.07em);
   transform-origin: 50% 82%;
   transform: scale(calc(1 + var(--g, 0) * var(--k, 0.6) * 0.55), calc(1 + var(--g, 0) * var(--k, 0.6)));
   /* its own color: it grows past the word's box, where the word's gradient doesn't reach */
