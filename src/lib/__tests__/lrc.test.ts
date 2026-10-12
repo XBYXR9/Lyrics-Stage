@@ -205,3 +205,23 @@ describe('heldLetterIndex', () => {
     expect(heldLetterIndex('...')).toBe(-1);
   });
 });
+
+describe('letterGrowth (the held letter: bigger, then small again)', () => {
+  it('starts small, grows through the note, peaks near its end, and is small again right after', async () => {
+    const { letterGrowth } = await import('../../components/styles/StretchStyle');
+    const g = (t: number) => letterGrowth(1000, 3000, t);
+    expect(g(900)).toBe(0);
+    expect(g(1000)).toBe(0);
+    expect(g(1800)).toBeGreaterThan(g(1400));
+    expect(g(2400)).toBeGreaterThan(g(1800));
+    expect(g(2600)).toBeCloseTo(1, 1); // near the peak, 80% into the note
+    expect(g(2900)).toBeLessThan(g(2600)); // already shrinking before the note ends
+    expect(g(3000)).toBeLessThan(0.5);
+    expect(g(3200)).toBeCloseTo(0, 5); // small again
+    expect(g(9000)).toBe(0);
+    for (let t = 800; t < 3500; t += 50) {
+      expect(g(t)).toBeGreaterThanOrEqual(0);
+      expect(g(t)).toBeLessThanOrEqual(1.0001);
+    }
+  });
+});

@@ -16,8 +16,10 @@ const SETTLE_MS = 380;
 /** A word is "held" (its letter grows) when it is sung at least this long. Estimated timings need a longer one to be sure. */
 const LETTER_HOLD_REAL_MS = 650;
 const LETTER_HOLD_ESTIMATED_MS = 1100;
-/** How long the grown letter takes to shrink back after the word ends. */
-const LETTER_SETTLE_MS = 450;
+/** The grown letter is at its biggest this far into the note, then shrinks back so it is small again as the note ends. */
+const LETTER_PEAK_AT = 0.8;
+/** The shrinking finishes this long after the note ends at the latest. */
+const LETTER_SETTLE_MS = 200;
 
 /** 0 while a word has not started, rising as it is sung, falling back to 0 after it ends. */
 export function swell(start: number, end: number, t: number): number {
@@ -26,11 +28,14 @@ export function swell(start: number, end: number, t: number): number {
   return clamp01(1 - (t - end) / SETTLE_MS) ** 2;
 }
 
-/** 0..1: how big the held letter is right now: it grows slowly and steadily while the word is sung, then shrinks back. */
+/** 0..1: how big the held letter is right now. It grows steadily while the word is sung, peaks near the end of the note, and is small again by the time the note is over. */
 export function letterGrowth(start: number, end: number, t: number): number {
   if (t <= start) return 0;
-  if (t < end) return Math.pow(clamp01((t - start) / Math.max(1, end - start)), 1.35);
-  return clamp01(1 - (t - end) / LETTER_SETTLE_MS) ** 2;
+  const dur = Math.max(1, end - start);
+  const peakAt = start + dur * LETTER_PEAK_AT;
+  if (t < peakAt) return Math.pow(clamp01((t - start) / (peakAt - start)), 1.35);
+  const back = clamp01((t - peakAt) / (end - peakAt + LETTER_SETTLE_MS));
+  return 1 - back * back * (3 - 2 * back); // smooth back down to 0
 }
 
 /** How far the held letter can grow (1 = it doubles in height), by how long the note is: about 0.4 for a short hold up to 1.3 for a long one. */
