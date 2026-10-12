@@ -1,6 +1,6 @@
 // Stretch: centered lines where each word glows for as long as it is held, then settles back.
 // When a singer holds a word ("youuuu", "daaaay"), the letter being held grows bigger and bigger until the note ends,
-// and a bar underneath fills as the note runs. It makes the most of real word timings; estimated ones work too.
+// then shrinks back. It makes the most of real word timings; estimated ones work too.
 import { Fragment, useRef, type CSSProperties } from 'react';
 import { heldLetterIndex } from '../../lib/heldLetter';
 import { wordProgress } from '../../lib/lrc';
@@ -41,6 +41,17 @@ export function letterGrowth(start: number, end: number, t: number): number {
 /** How far the held letter can grow (1 = it doubles in height), by how long the note is: about 0.4 for a short hold up to 1.3 for a long one. */
 export const letterReach = (durationMs: number) => 0.4 + 0.9 * clamp01((durationMs - LETTER_HOLD_REAL_MS) / 1800);
 
+/**
+ * A held word is drawn in three pieces (before the held letter, the letter, after it), each with its own fill, because some
+ * browsers (Safari on iPhone) draw a stray copy of a letter when a transformed letter sits inside a word whose text is
+ * filled with a gradient. This turns the word's progress into the progress of the first and last piece, where `before`
+ * and `letter` are the shares of the word's characters in front of the held letter and the letter itself.
+ */
+export function pieceProgress(p: number, before: number, letter: number): { first: number; last: number } {
+  const rest = Math.max(1e-6, 1 - before - letter);
+  return { first: before <= 0 ? 1 : clamp01(p / before), last: clamp01((p - before - letter) / rest) };
+}
+
 /** 0..1: how much a word is "held" (1 = a long note). */
 export const holdOf = (durationMs: number) => clamp01((durationMs - HOLD_FROM_MS) / HOLD_RANGE_MS);
 
@@ -64,7 +75,11 @@ export function StretchStyle(props: StyleProps) {
         const el = els[j];
         if (!el) return;
         const p = perWord ? wordProgress(w, t) : t >= l.start ? 1 : 0;
-        el.style.setProperty('--p', `${(p * 100).toFixed(1)}%`);
+        if (el.dataset.held) {
+          const { first, last } = pieceProgress(p, Number(el.dataset.before), Number(el.dataset.letter));
+          el.style.setProperty('--pa', `${(first * 100).toFixed(1)}%`);
+          el.style.setProperty('--pb', `${(last * 100).toFixed(1)}%`);
+        } else el.style.setProperty('--p', `${(p * 100).toFixed(1)}%`);
         const s = perWord && !reduceMotion ? swell(w.start, w.end, t) : 0;
         el.style.setProperty('--s', s.toFixed(3));
         el.style.setProperty('--on', t >= w.start || !perWord ? '1' : '0');
@@ -100,16 +115,20 @@ export function StretchStyle(props: StyleProps) {
               line.words.map((w, j) => {
                 const shown = w.text.trimEnd();
                 const dur = w.end - w.start;
-                const heldAt = dur >= (lyrics.wordSynced ? LETTER_HOLD_REAL_MS : LETTER_HOLD_ESTIMATED_MS) ? heldLetterIndex(shown) : -1;
+                const heldAt = !line.rtl && dur >= (lyrics.wordSynced ? LETTER_HOLD_REAL_MS : LETTER_HOLD_ESTIMATED_MS) ? heldLetterIndex(shown) : -1;
                 const letters = heldAt >= 0 ? Array.from(shown) : [];
                 return (
                   <Fragment key={j}>
                     <span
                       className={`st-w${w.backing ? ' is-bg' : ''}${heldAt >= 0 ? ' has-held' : ''}`}
                       data-held={heldAt >= 0 ? '1' : undefined}
+                      data-before={heldAt >= 0 ? (heldAt / letters.length).toFixed(4) : undefined}
+                      data-letter={heldAt >= 0 ? (1 / letters.length).toFixed(4) : undefined}
                       style={
                         {
                           '--p': slot < 0 ? '100%' : '0%',
+                          '--pa': slot < 0 ? '100%' : '0%',
+                          '--pb': slot < 0 ? '100%' : '0%',
                           '--s': 0,
                           '--g': 0,
                           '--on': slot < 0 ? 1 : 0,
@@ -124,9 +143,9 @@ export function StretchStyle(props: StyleProps) {
                     >
                       {heldAt >= 0 ? (
                         <>
-                          {letters.slice(0, heldAt).join('')}
+                          <span className="st-seg st-seg-a">{letters.slice(0, heldAt).join('')}</span>
                           <span className="st-held">{letters[heldAt]}</span>
-                          {letters.slice(heldAt + 1).join('')}
+                          <span className="st-seg st-seg-b">{letters.slice(heldAt + 1).join('')}</span>
                         </>
                       ) : (
                         shown
